@@ -975,13 +975,15 @@ test('lexical-only: the LLM key pattern refuses a fixed list of names and none o
     'OPENROUTER_API_KEY', 'DASHSCOPE_API_KEY', 'QWEN_API_KEY', 'DEEPSEEK_API_KEY', 'MOONSHOT_API_KEY', 'ZHIPU_API_KEY',
     'MINIMAX_API_KEY', 'MISTRAL_API_KEY', 'COHERE_API_KEY', 'GROQ_API_KEY', 'PERPLEXITY_API_KEY', 'XAI_API_KEY',
     'TOGETHER_API_KEY', 'FIREWORKS_API_KEY', 'REPLICATE_API_TOKEN', 'HUGGINGFACE_TOKEN', 'BEDROCK_ACCESS_KEY',
-    'PIVOTA_GEMINI_API_KEY', 'AURORA_SKIN_GEMINI_API_KEY', 'FALLBACK_GEMINI_API_KEY', 'OPENAI_SECRET'];
+    'PIVOTA_GEMINI_API_KEY', 'AURORA_SKIN_GEMINI_API_KEY', 'FALLBACK_GEMINI_API_KEY', 'OPENAI_SECRET',
+    'GEMINI_KEY', 'OPENAI_KEY', 'GEMINI_API_KEYS', 'ANTHROPIC_KEYS', 'VERTEX_API_KEY', 'KIMI_API_KEY', 'VOYAGE_API_KEY', 'JINA_API_KEY'];
   for (const key of MUST_REFUSE) {
     assert.equal(sandbox.LLM_KEY_SETTING_RE.test(key), true, key);
     assert.ok((refusalOf({ ...SAFE_SANDBOX, [key]: '' }) || '').includes(`${key}(no LLM key may be set in the sandbox)`), key);
   }
   for (const key of ['LLM_KILL_SWITCH', 'GEMINI_JSON_TIMEOUT', 'FIND_PRODUCTS_MULTI_INTENT_LLM_GEMINI_MAX_OUTPUT_TOKENS',
-    'PIVOTA_INTENT_LLM_ENABLED', 'LLM_TOKEN_BUDGET', 'MISSING_GEMINI_KEY', 'GOOGLE_CLOUD_PROJECT', 'VERTEX_AI_ENABLED']) {
+    'PIVOTA_INTENT_LLM_ENABLED', 'LLM_TOKEN_BUDGET', 'GOOGLE_CLOUD_PROJECT', 'VERTEX_AI_ENABLED', 'OPENAI_PRICE_PER_1K_TOKENS',
+    'AURORA_EVAL_JUDGE_GEMINI_MAX_OUTPUT_TOKENS', 'GEMINI_PRICE_PER_1K_TOKENS']) {
     assert.equal(sandbox.LLM_KEY_SETTING_RE.test(key), false, key);
   }
 });
@@ -1001,33 +1003,69 @@ test('hosts are checked as fetch decodes them: percent-encoded dots do not hide 
 // 11. The repo never names a refused private IP, in ANY spelling libc would read (the canonical-form scrub).
 // --------------------------------------------------------------------------------------------------------------
 
-test('repo scrub: no file names a refused prod/staging private IP, in any spelling (canonical-form scan)', { timeout: 120000 }, () => {
+
+/** The scrub's one reading of escaped dots: any run of backslashes before a dot is a dot (`10\.x` in a regex
+ *  literal, `'10\\.x'` in a string). Shared by the scrub and the test of its forms. */
+const unescapeDots = (text) => text.replace(/\\+\./g, '.');
+
+test('repo scrub: no tracked file names a refused prod/staging private IP, in any spelling (canonical-form scan)', { timeout: 180000 }, () => {
   const fs = require('node:fs');
   const path = require('node:path');
   const root = path.resolve(__dirname, '..');
-  const SKIP_DIRS = new Set(['node_modules', '.git', 'fixtures', 'datasets']);
-  const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
-    const p = path.join(dir, d.name);
-    if (d.isDirectory()) return SKIP_DIRS.has(d.name) ? [] : walk(p);
-    return /\.((c|m)?(js|ts)|json|md|sql|sh|ya?ml|py|txt)$/.test(d.name) ? [p] : [];
-  });
-  const RFC1918 = /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/;
+  // EVERY tracked file (the Dockerfile's `COPY . .` ships the whole repo), not a directory list. No git, no pass.
+  const listed = require('node:child_process').execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8', maxBuffer: 1 << 28 })
+    .split('\0').filter(Boolean);
+  assert.ok(listed.length > 2000, `git ls-files listed only ${listed.length} files`);
   const shipped = new Set(sandbox.SHIPPED_REFUSED_IP_DIGESTS);
   const seen = new Map();
-  const hits = [];
-  for (const dir of ['src', 'mcp-server/src', 'tests', 'scripts', 'docs', 'infra', 'ops']) {
-    const abs = path.join(root, dir);
-    if (!fs.existsSync(abs)) continue;
-    for (const f of walk(abs)) {
-      const text = fs.readFileSync(f, 'utf8');
-      if (text.length > 2e6) continue;
-      for (const m of text.toLowerCase().matchAll(/(?<![0-9a-z.])(?:0x[0-9a-f]+|[0-9]+)(?:\.(?:0x[0-9a-f]+|[0-9]+)){1,3}(?![0-9a-z])/g)) {
-        const c = sandbox.canonicalIpv4(m[0]);
-        if (!c || !RFC1918.test(c)) continue;
-        if (!seen.has(c)) seen.set(c, shipped.has(sandbox.projectPartDigest(c)));
-        if (seen.get(c)) hits.push(path.relative(root, f)); // the path only, never the value
-      }
+  const hits = new Set();
+  let textFiles = 0;
+  const read = new Set();
+  for (const rel of listed) {
+    const buf = fs.readFileSync(path.join(root, rel)); // a missing tracked file throws: never a silent skip
+    if (buf.subarray(0, 8192).includes(0)) continue; // binary
+    textFiles += 1;
+    read.add(rel);
+    // `10\.x\.y\.z` (a regex literal) and `'10\\.x...'` (one inside a string) are the same address: any run of
+    // backslashes before a dot reads as a dot.
+    const text = unescapeDots(buf.toString('utf8').toLowerCase());
+    for (const m of text.matchAll(/(?<![0-9a-z.])(?:0x[0-9a-f]+|[0-9]+)(?:\.(?:0x[0-9a-f]+|[0-9]+)){0,3}(?![0-9a-z])/g)) {
+      const c = sandbox.canonicalIpv4(m[0], { bare: true });
+      if (!c || !/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(c)) continue;
+      if (!seen.has(c)) seen.set(c, shipped.has(sandbox.projectPartDigest(c)));
+      if (seen.get(c)) hits.add(rel); // the path only, never the value
     }
   }
-  assert.deepEqual(hits, [], `files naming a refused IP: ${[...new Set(hits)].join(', ')}`);
+  assert.ok(textFiles > 2000, `only ${textFiles} text files read`);
+  // The scope is the whole tree, root and dot-directories included (the image ships them all).
+  for (const must of ['Dockerfile', 'Makefile', 'package.json', '.github/workflows/README-relationship-graph.md', 'scripts/run-relgraph-health-job.js']) {
+    assert.ok(read.has(must), `the scrub did not read ${must}`);
+  }
+  assert.deepEqual([...hits], [], `files naming a refused IP: ${[...hits].join(', ')}`);
+});
+
+test('repo scrub reads the forms a planted IP could take (stand-in IPs, through the same readers)', () => {
+  // Bare mode reads 1-part decimal and hex; the escaped-dot regex form reads as dots.
+  assert.equal(sandbox.canonicalIpv4('184220161', { bare: true }), '10.250.250.1');
+  assert.equal(sandbox.canonicalIpv4('0xafafa01', { bare: true }), '10.250.250.1');
+  assert.equal(sandbox.canonicalIpv4('10.16448001', { bare: true }), '10.250.250.1');
+  assert.equal(sandbox.canonicalIpv4('184220161'), null, 'not read as an address in the default mode');
+  for (const escaped of ['10\\.250\\.250\\.1', '10\\\\.250\\\\.250\\\\.1']) assert.equal(unescapeDots(escaped), '10.250.250.1', escaped);
+  for (const spelled of ['184220161', '0xafafa01', '10.16448001', '10.250.250.01', '012.0372.0372.1']) {
+    assert.equal(sandbox.isRefusedIp(spelled), true, spelled);
+  }
+  for (const notOne of ['5432', '1795614420', '10.250.250.10']) assert.equal(sandbox.isRefusedIp(notOne), false, notOne);
+  // ...and the boot check refuses a bare-number spelling in any setting.
+  assert.match(refusalOf({ ...SAFE_SANDBOX, SOME_SETTING: '184220161' }) || '', /SOME_SETTING\(names a prod or staging database\/Redis address\)/);
+});
+
+test('embedded URLs are decoded on their own: JSON arrays, url=..., a malformed % elsewhere', () => {
+  for (const value of ['["https://api。pivota。cc/x"]', 'url=https://api。pivota。cc', '["https://api%2Epivota%2Ecc/x?q=100%"]',
+    'a=1&u=https%3A%2F%2Fapi%252Epivota%252Ecc%2Fx', '{"u":"https://web-zq7stand1n-uw．a．run．app"}']) {
+    assert.ok(refusalOf({ ...SAFE_SANDBOX, SOME_SETTING: value }), value);
+  }
+  assert.equal(refusalOf({ ...SAFE_SANDBOX, SOME_SETTING: '["https://sandbox.mcp.pivota.cc/x?q=100%"]' }), null);
+  // Not a URL at all: only the tolerant, repeated decode sees these hosts.
+  assert.match(refusalOf({ ...SAFE_SANDBOX, SOME_SETTING: 'host=api%2Epivota%2Ecc&q=100%' }) || '', /SOME_SETTING\(/);
+  assert.match(refusalOf({ ...SAFE_SANDBOX, SOME_SETTING: 'host=api%252Epivota%252Ecc' }) || '', /SOME_SETTING\(/);
 });

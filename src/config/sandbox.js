@@ -132,20 +132,27 @@ function hostTokens(value) {
 function candidateHosts(value) {
   const raw = String(value || '');
   const out = new Set(hostTokens(raw));
-  let decoded = raw;
-  try {
-    decoded = decodeURIComponent(raw);
-  } catch {
-    decoded = raw;
+  const forms = [raw];
+  // Decode by HAND, escape by escape, up to three times (%252E -> %2E -> .): one malformed `%` elsewhere in the value
+  // (decodeURIComponent throws on it) must not leave the rest undecoded.
+  let cur = raw;
+  for (let i = 0; i < 3; i += 1) {
+    const next = cur.replace(/%([0-9a-f]{2})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+    if (next === cur) break;
+    forms.push(next);
+    cur = next;
   }
-  for (const t of hostTokens(decoded)) out.add(t);
-  for (const piece of `${raw} ${decoded}`.split(/[\s,;]+/)) {
-    if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(piece)) continue;
-    try {
-      const h = new URL(piece).hostname.toLowerCase();
-      if (h) out.add(h.replace(/^\[|\]$/g, ''));
-    } catch {
-      // not a URL: its tokens above are what counts
+  for (const form of forms) {
+    for (const t of hostTokens(form)) out.add(t);
+    // Every URL-shaped substring, wherever it sits (a JSON array, `url=...`), parsed on its own as fetch would: the
+    // URL parser also normalises IDNA dots (U+3002, U+FF0E) that the ASCII tokens never see.
+    for (const m of form.matchAll(/[a-z][a-z0-9+.-]*:\/\/[^\s"'<>,;\]\)\\`]+/gi)) {
+      try {
+        const h = new URL(m[0]).hostname.toLowerCase();
+        if (h) out.add(h.replace(/^\[|\]$/g, ''));
+      } catch {
+        // not a URL: its tokens above are what counts
+      }
     }
   }
   return [...out];
@@ -201,9 +208,11 @@ function setRefusedIpDigestsForTests(digests) {
 
 /** A numeric host the way libc's inet_aton reads it (1 to 4 parts, each decimal, 0-prefixed octal or 0x hex), as a
  *  canonical dotted quad, or null when it is not one. 10.250.1, 012.250.0.1 and 0x0a.250.0.1 all name 10.250.0.1. */
-function canonicalIpv4(token) {
+function canonicalIpv4(token, { bare = false } = {}) {
   const t = String(token || '').toLowerCase();
-  if (!/^[0-9a-fx.]+$/.test(t) || !/[.x]/.test(t)) return null;
+  // A bare number (one part, no dot, no 0x) is an address to inet_aton too (167772161 is 10.0.0.1); read it only when
+  // asked, so ports and timeouts are not taken for addresses.
+  if (!/^[0-9a-fx.]+$/.test(t) || (!bare && !/[.x]/.test(t))) return null;
   const parts = t.split('.');
   if (parts.length < 1 || parts.length > 4 || parts.some((p) => p === '')) return null;
   const nums = [];
@@ -224,9 +233,13 @@ function canonicalIpv4(token) {
   return [...nums, ...tail].join('.');
 }
 
+const PRIVATE_RANGE_RE = /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/;
+
+/** True when `token`, read the libc way (bare numbers too), is a refused IP. Only private-range addresses are
+ *  digested (the refused ones are private), so a number that is not one costs nothing. */
 function isRefusedIp(token) {
-  const canonical = canonicalIpv4(token);
-  return canonical !== null && refusedIpDigests.has(projectPartDigest(canonical));
+  const canonical = canonicalIpv4(token, { bare: true });
+  return canonical !== null && PRIVATE_RANGE_RE.test(canonical) && refusedIpDigests.has(projectPartDigest(canonical));
 }
 
 /** Settings exempt from the brand-zone rule, with the only values allowed: display-only link hosts nothing fetches
@@ -390,11 +403,11 @@ const PROJECT_SETTINGS = Object.freeze(['PRICE_CACHE_FIRESTORE_PROJECT']);
  *  refused whenever PRESENT in the sandbox. */
 const VERTEX_PATH_SETTING_RE = /(^|_)VERTEX_(PROJECT|REGION|LOCATION)$/;
 
-/** An LLM provider credential setting, by name: <...>_<PROVIDER>[_...]_(API_KEY|KEY|TOKEN|API_TOKEN|SECRET), plus
+/** An LLM provider credential setting, by name: <...>_<PROVIDER>[_...]_(API_KEY|APIKEY|KEY|KEYS|TOKEN|SECRET|ACCESS_KEY)[_<n>], plus
  *  GOOGLE_API_KEY. Today that is GEMINI_API_KEY, PIVOTA_GEMINI_API_KEY, FALLBACK_GEMINI_API_KEY, GOOGLE_API_KEY,
  *  OPENAI_API_KEY, ANTHROPIC_API_KEY, LLM_API_KEY and AURORA_{DIAG,RECO,SKIN,TRAVEL,VISION}_GEMINI_API_KEY. Not
  *  LLM_KILL_SWITCH, GEMINI_JSON_TIMEOUT or *_MAX_OUTPUT_TOKENS (they hold no credential). */
-const LLM_KEY_SETTING_RE = /^(?:[A-Z0-9_]*_)?(?:GEMINI|OPENAI|AZURE_OPENAI|ANTHROPIC|CLAUDE|LLM|GENAI|GOOGLE_GENERATIVE_AI|GENERATIVE_AI|OPENROUTER|DASHSCOPE|QWEN|DEEPSEEK|MOONSHOT|ZHIPU|MINIMAX|MISTRAL|COHERE|GROQ|PERPLEXITY|XAI|TOGETHER|FIREWORKS|REPLICATE|HUGGINGFACE|BEDROCK)(?:_[A-Z0-9]+)*_?(?:API_?KEY|TOKEN|SECRET|ACCESS_KEY)(?:_\d+)?$|^GOOGLE_API_?KEY(?:_\d+)?$/;
+const LLM_KEY_SETTING_RE = /^(?:[A-Z0-9_]*_)?(?:GEMINI|OPENAI|AZURE_OPENAI|ANTHROPIC|CLAUDE|LLM|GENAI|GOOGLE_GENERATIVE_AI|GENERATIVE_AI|VERTEX|OPENROUTER|DASHSCOPE|QWEN|DEEPSEEK|MOONSHOT|KIMI|ZHIPU|MINIMAX|MISTRAL|COHERE|GROQ|PERPLEXITY|XAI|TOGETHER|FIREWORKS|REPLICATE|HUGGINGFACE|BEDROCK|VOYAGE|JINA)(?:_[A-Z0-9]+)*_?(?:(?:API_?)?KEYS?|TOKEN|SECRET|ACCESS_KEY)(?:_\d+)?$|^GOOGLE_API_?KEYS?(?:_\d+)?$/;
 
 /**
  * The settings that name the backend this gateway calls. PIVOTA_API_BASE is REQUIRED (unset, the gateway calls
@@ -745,4 +758,5 @@ module.exports = {
   LLM_KEY_SETTING_RE,
   VERTEX_PATH_SETTING_RE,
   canonicalIpv4,
+  isRefusedIp,
 };
