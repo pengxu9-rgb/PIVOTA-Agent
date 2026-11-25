@@ -583,6 +583,34 @@ test('logs: refusals are counted, not logged per search; a timer logs the window
   assert.deepEqual(cleared, [1, 2]);
 });
 
+test('logs: when the refusal timer cannot start, the first refusal after the window logs it', async () => {
+  const c = clock();
+  const lines = [];
+  let attempts = 0;
+  const cat = fakeCatalog();
+  const l = createCafe24CatalogLane({
+    fetchImpl: cat.fetchImpl,
+    profileUrl: PROFILE,
+    now: c.now,
+    env: { CAFE24_CATALOG_SEARCH: 'shadow' },
+    logger: { info: (o) => lines.push(o) },
+    setTimer: () => { attempts += 1; throw new Error('no timers here'); },
+  });
+  await l.observeSearch({ query: 'toner' });
+  await l.observeSearch({ query: 'toner' });
+  c.advance(59 * 1000);
+  await l.observeSearch({ query: 'toner', market: 'DE' });
+  assert.equal(lines.length, 0, 'inside the window nothing is logged');
+  c.advance(1000);
+  await l.observeSearch({ query: 'toner' });
+  assert.equal(lines.length, 1, 'the first refusal after the window logs it');
+  assert.equal(lines[0].event, 'cafe24_catalog_shadow_refusals');
+  assert.deepEqual(lines[0].counts, { no_market: 3, market_not_priced: 1 });
+  await l.observeSearch({ query: 'toner' });
+  assert.equal(lines.length, 1, 'a new window starts');
+  assert.equal(attempts, 2, 'each window tries the timer once');
+});
+
 test('breaker: a remembered discovery failure is not counted again on reuse', async () => {
   const c = clock();
   const abort = Object.assign(new Error('aborted'), { name: 'AbortError' });

@@ -694,6 +694,8 @@ function createCafe24CatalogLane(options = {}) {
 
   // Refusals (nothing sent) are counted. The first refusal of a window starts a timer that logs the window's counts
   // REFUSAL_LOG_INTERVAL_MS later, so counts are logged at most once per interval and the last window is never lost.
+  // If the timer could not be started, the window is logged by the first refusal after it has expired instead (the
+  // counts are then held only until the next refusal, never indefinitely while traffic continues).
   function countRefusal(reason) {
     const t = now();
     if (refusalsSinceMs === null) {
@@ -701,6 +703,7 @@ function createCafe24CatalogLane(options = {}) {
       try { refusalTimer = scheduleTimer(flushRefusals, REFUSAL_LOG_INTERVAL_MS); } catch { refusalTimer = null; }
     }
     refusals[reason] = (refusals[reason] || 0) + 1;
+    if (refusalTimer === null && t - refusalsSinceMs >= REFUSAL_LOG_INTERVAL_MS) flushRefusals();
   }
 
   function flushRefusals() {
