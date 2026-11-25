@@ -43,12 +43,21 @@
  * Every accessor also takes an optional `env` object for call sites that already inject one.
  */
 
-/** The four environment labels the rest of the codebase is allowed to see. */
+/**
+ * The five environment labels the rest of the codebase is allowed to see.
+ *
+ * SANDBOX is the partner sandbox (its own GCP project; partner sandbox design, decided 25 Nov 2026): a DEPLOYED
+ * environment that is NOT production. Only `PIVOTA_ENV=sandbox` names it (that exact word, any case): no synonym,
+ * and no other source (NODE_ENV=sandbox resolves exactly as before), so no existing deploy can drift into it.
+ * `isProduction()` stays the production union: a sandbox revision that ALSO carries a production signal is still
+ * production to every guard, and `src/config/sandbox.js` refuses to boot it.
+ */
 const PLATFORM_ENVS = Object.freeze({
   PRODUCTION: 'production',
   STAGING: 'staging',
   DEVELOPMENT: 'development',
   TEST: 'test',
+  SANDBOX: 'sandbox',
 });
 
 /** The three platforms this service is known to run on. */
@@ -144,6 +153,8 @@ function normalizeEnvName(value) {
   if (t === 'staging' || t === 'stage' || t === 'preview') return PLATFORM_ENVS.STAGING;
   if (t === 'test' || t === 'testing') return PLATFORM_ENVS.TEST;
   if (t === 'development' || t === 'dev' || t === 'local') return PLATFORM_ENVS.DEVELOPMENT;
+  // Exact word only: no 'sbx' / 'sand' synonyms, so only a deliberate setting names the sandbox.
+  if (t === 'sandbox') return PLATFORM_ENVS.SANDBOX;
   return null;
 }
 
@@ -258,6 +269,10 @@ function resolvePlatformEnv(env) {
     const raw = trimmed(e[key]);
     if (!raw) continue;
     const normalized = normalizeEnvName(raw);
+    // The sandbox is named by PIVOTA_ENV ONLY. Anywhere else the word is what it was before the label existed:
+    // unrecognized, so the scan goes on (and a managed platform with nothing else fails closed to production).
+    // That keeps every environment without `PIVOTA_ENV=sandbox` resolving exactly as it did.
+    if (normalized === PLATFORM_ENVS.SANDBOX && key !== 'PIVOTA_ENV') continue;
     if (normalized) return { env: normalized, source: key, raw, resolved: true };
     // A non-empty but unrecognized value (e.g. RAILWAY_ENVIRONMENT="pr-42") must not be
     // silently dropped: keep scanning, and if nothing else resolves, fail closed below.
@@ -279,7 +294,7 @@ function resolvePlatformEnv(env) {
   return { env: PLATFORM_ENVS.DEVELOPMENT, source: 'default', raw: '', resolved: true };
 }
 
-/** The environment label: "production" | "staging" | "development" | "test". */
+/** The environment label: "production" | "staging" | "development" | "test" | "sandbox". */
 function platformEnv(env) {
   return resolvePlatformEnv(env).env;
 }
@@ -305,6 +320,22 @@ function isStaging(env) {
   const e = readEnv(env);
   if (isProduction(e)) return false;
   return resolvePlatformEnv(e).env === PLATFORM_ENVS.STAGING;
+}
+
+/**
+ * True only when the resolved label is the partner sandbox and nothing claims production (the same shape as
+ * `isStaging`). A sandbox label beside a production signal is NOT sandbox here: every guard then sees production,
+ * and `assertSandboxConfig` (src/config/sandbox.js) refuses the boot, so that state never serves.
+ */
+function isSandbox(env) {
+  const e = readEnv(env);
+  if (isProduction(e)) return false;
+  return resolvePlatformEnv(e).env === PLATFORM_ENVS.SANDBOX;
+}
+
+/** True when the resolved label is sandbox, whatever else is set: for the boot check that refuses the conflict. */
+function namesSandbox(env) {
+  return resolvePlatformEnv(readEnv(env)).env === PLATFORM_ENVS.SANDBOX;
 }
 
 /** True when this process is a test runner (jest/node:test), independent of platform. */
@@ -440,7 +471,7 @@ function requirePlatformEnv(env) {
   throw new Error(
     'PLATFORM_ENV_UNRESOLVED: running on a managed platform '
       + `(${platformName(e)}) with no resolvable environment name. `
-      + 'Set PIVOTA_ENV=production|staging|development (Cloud Run injects no environment name). '
+      + 'Set PIVOTA_ENV=production|staging|sandbox|development (Cloud Run injects no environment name). '
       + `Checked, in order: ${ENV_NAME_SOURCES.join(', ')}.`,
   );
 }
@@ -455,6 +486,8 @@ module.exports = {
   resolvePlatformEnv,
   isProduction,
   isStaging,
+  isSandbox,
+  namesSandbox,
   isTestRuntime,
   isManagedPlatform,
   platformName,
