@@ -127,8 +127,32 @@ function hostTokens(value) {
   return String(value || '').toLowerCase().match(/[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?/g) || [];
 }
 
+/** Every host candidate in a value: its raw tokens, the tokens of its percent-decoded form, and the hostname of each
+ *  URL in it as `new URL()` decodes it (https://api%2Epivota%2Ecc is api.pivota.cc to fetch, so it is here too). */
+function candidateHosts(value) {
+  const raw = String(value || '');
+  const out = new Set(hostTokens(raw));
+  let decoded = raw;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {
+    decoded = raw;
+  }
+  for (const t of hostTokens(decoded)) out.add(t);
+  for (const piece of `${raw} ${decoded}`.split(/[\s,;]+/)) {
+    if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(piece)) continue;
+    try {
+      const h = new URL(piece).hostname.toLowerCase();
+      if (h) out.add(h.replace(/^\[|\]$/g, ''));
+    } catch {
+      // not a URL: its tokens above are what counts
+    }
+  }
+  return [...out];
+}
+
 function valueNamesRefusedHost(value) {
-  return hostTokens(value).some(isRefusedHost);
+  return candidateHosts(value).some(isRefusedHost);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -175,8 +199,34 @@ function setRefusedIpDigestsForTests(digests) {
   refusedIpDigests = new Set(digests === undefined ? SHIPPED_REFUSED_IP_DIGESTS : digests);
 }
 
+/** A numeric host the way libc's inet_aton reads it (1 to 4 parts, each decimal, 0-prefixed octal or 0x hex), as a
+ *  canonical dotted quad, or null when it is not one. 10.250.1, 012.250.0.1 and 0x0a.250.0.1 all name 10.250.0.1. */
+function canonicalIpv4(token) {
+  const t = String(token || '').toLowerCase();
+  if (!/^[0-9a-fx.]+$/.test(t) || !/[.x]/.test(t)) return null;
+  const parts = t.split('.');
+  if (parts.length < 1 || parts.length > 4 || parts.some((p) => p === '')) return null;
+  const nums = [];
+  for (const p of parts) {
+    let n;
+    if (/^0x[0-9a-f]+$/.test(p)) n = parseInt(p.slice(2), 16);
+    else if (/^0[0-7]*$/.test(p)) n = parseInt(p, 8);
+    else if (/^[1-9][0-9]*$/.test(p)) n = parseInt(p, 10);
+    else return null;
+    nums.push(n);
+  }
+  const last = nums.pop();
+  if (nums.some((n) => n > 255)) return null;
+  const restBits = 8 * (4 - nums.length);
+  if (last >= 2 ** restBits) return null;
+  const tail = [];
+  for (let i = 4 - nums.length - 1; i >= 0; i -= 1) tail.push(Math.floor(last / 2 ** (8 * i)) % 256);
+  return [...nums, ...tail].join('.');
+}
+
 function isRefusedIp(token) {
-  return IPV4_RE.test(token) && refusedIpDigests.has(projectPartDigest(token));
+  const canonical = canonicalIpv4(token);
+  return canonical !== null && refusedIpDigests.has(projectPartDigest(canonical));
 }
 
 /** Settings exempt from the brand-zone rule, with the only values allowed: display-only link hosts nothing fetches
@@ -200,7 +250,7 @@ function allowListProblem(key, value, ownProjectPart) {
   if (!low) return null;
   if (PROD_PROJECT_NAME_RE.test(low)) return 'names a prod or staging GCP project';
   const exempt = DISPLAY_ONLY_HOST_SETTINGS[key];
-  for (const raw of hostTokens(low)) {
+  for (const raw of candidateHosts(low)) {
     const host = raw.replace(/\.+$/, '');
     if (isRefusedIp(host)) return 'names a prod or staging database/Redis address';
     if (!host.includes('.')) continue;
@@ -227,6 +277,8 @@ function privateEndpointProblem(host, sandboxProject) {
     if (!socket) return 'not a Cloud SQL socket path';
     return sandboxProject && socket[1] === sandboxProject ? null : 'Cloud SQL socket outside the sandbox project';
   }
+  // Only a canonical dotted quad: 10.025.0.2 or 0x0a.0.0.2 reach a real address through libc but are not this form.
+  if (!require('node:net').isIPv4(h)) return /^[0-9a-fx.]+$/.test(h) && /\d/.test(h) ? 'not a canonical IP address' : 'not a private address';
   return PRIVATE_IP_RE.test(h) ? null : 'not a private address';
 }
 
@@ -273,8 +325,40 @@ function urlConnectHosts(raw) {
   } catch {
     return null;
   }
-  return [...hosts].map((h) => h.trim()).filter(Boolean);
+  return [...hosts].filter((h) => String(h).trim() !== '');
 }
+
+let ioredisParseUrl = null;
+/** EVERY host a Redis URL could connect to: the WHATWG URL's host and what ioredis itself parses (it differs on
+ *  userinfo tricks: redis://34.1.2.3\\@10.9.0.5:6379 connects to 34.1.2.3). Null when unparsable. */
+function redisUrlHosts(raw) {
+  const s = String(raw).trim();
+  const hosts = new Set();
+  try {
+    const u = new URL(s);
+    if (u.hostname) hosts.add(u.hostname);
+  } catch {
+    // ioredis below decides
+  }
+  try {
+    if (ioredisParseUrl === null) {
+      // eslint-disable-next-line global-require
+      const path = require('node:path');
+      // eslint-disable-next-line global-require
+      ioredisParseUrl = require(path.join(path.dirname(require.resolve('ioredis')), 'utils')).parseURL;
+    }
+    const parsed = ioredisParseUrl(s);
+    if (parsed && parsed.host) hosts.add(String(parsed.host));
+  } catch {
+    return null;
+  }
+  return [...hosts].filter((h) => String(h).trim() !== '');
+}
+
+/** Settings that hold a database or Redis endpoint, by name (every Pool / client the gateway opens). */
+const DB_URL_SETTING_RE = /(^|_)DATABASE_URL$/;
+const REDIS_URL_SETTING_RE = /(^|_)REDIS(_[A-Z0-9]+)*_URL$/;
+const ENDPOINT_HOST_SETTING_RE = /^PGHOST$|(^|_)(PG|REDIS)(_[A-Z0-9]+)*_HOST$/;
 
 /** The hostname of an http(s) URL, or ''. */
 function httpUrlHost(raw) {
@@ -299,13 +383,18 @@ function sandboxProjectProblem(id) {
 }
 
 /** Settings that name a GCP project the gateway talks to: each, when set, must be the sandbox's own project. */
-const PROJECT_SETTINGS = Object.freeze(['PRICE_CACHE_FIRESTORE_PROJECT', 'PIVOTA_AGENT_CENTER_GEMINI_VERTEX_PROJECT']);
+const PROJECT_SETTINGS = Object.freeze(['PRICE_CACHE_FIRESTORE_PROJECT']);
+
+/** Settings that turn on a Vertex path of their own, whatever VERTEX_AI_ENABLED says (PIVOTA_AGENT_CENTER_GEMINI_VERTEX_PROJECT,
+ *  MERCHANT_AUDIT_GEMINI_VERTEX_PROJECT, ANTHROPIC_VERTEX_REGION, PIVOTA_AGENT_CENTER_ANTHROPIC_VERTEX_REGION today):
+ *  refused whenever PRESENT in the sandbox. */
+const VERTEX_PATH_SETTING_RE = /(^|_)VERTEX_(PROJECT|REGION|LOCATION)$/;
 
 /** An LLM provider credential setting, by name: <...>_<PROVIDER>[_...]_(API_KEY|KEY|TOKEN|API_TOKEN|SECRET), plus
  *  GOOGLE_API_KEY. Today that is GEMINI_API_KEY, PIVOTA_GEMINI_API_KEY, FALLBACK_GEMINI_API_KEY, GOOGLE_API_KEY,
  *  OPENAI_API_KEY, ANTHROPIC_API_KEY, LLM_API_KEY and AURORA_{DIAG,RECO,SKIN,TRAVEL,VISION}_GEMINI_API_KEY. Not
  *  LLM_KILL_SWITCH, GEMINI_JSON_TIMEOUT or *_MAX_OUTPUT_TOKENS (they hold no credential). */
-const LLM_KEY_SETTING_RE = /^(?:[A-Z0-9_]*_)?(?:GEMINI|OPENAI|ANTHROPIC|CLAUDE|LLM|GENAI|OPENROUTER|DASHSCOPE|DEEPSEEK|MISTRAL|COHERE|GROQ|PERPLEXITY|XAI)(?:_[A-Z0-9]+)*_(?:API_KEY|KEY|TOKEN|SECRET|API_TOKEN)$|^GOOGLE_API_KEY$/;
+const LLM_KEY_SETTING_RE = /^(?:[A-Z0-9_]*_)?(?:GEMINI|OPENAI|AZURE_OPENAI|ANTHROPIC|CLAUDE|LLM|GENAI|GOOGLE_GENERATIVE_AI|GENERATIVE_AI|OPENROUTER|DASHSCOPE|QWEN|DEEPSEEK|MOONSHOT|ZHIPU|MINIMAX|MISTRAL|COHERE|GROQ|PERPLEXITY|XAI|TOGETHER|FIREWORKS|REPLICATE|HUGGINGFACE|BEDROCK)(?:_[A-Z0-9]+)*_?(?:API_?KEY|TOKEN|SECRET|ACCESS_KEY)(?:_\d+)?$|^GOOGLE_API_?KEY(?:_\d+)?$/;
 
 /**
  * The settings that name the backend this gateway calls. PIVOTA_API_BASE is REQUIRED (unset, the gateway calls
@@ -457,9 +546,9 @@ function sandboxConfigProblems(env = process.env) {
   }
 
   // The database and Redis: private, and in the sandbox's own project.
-  for (const key of ['DATABASE_URL', 'REDIS_URL']) {
+  for (const key of Object.keys(e).sort().filter((k) => DB_URL_SETTING_RE.test(k) || REDIS_URL_SETTING_RE.test(k))) {
     if (!str(e[key])) continue;
-    const hosts = urlConnectHosts(e[key]);
+    const hosts = REDIS_URL_SETTING_RE.test(key) ? redisUrlHosts(e[key]) : urlConnectHosts(e[key]);
     if (hosts === null) {
       problems.push(`${key}(not a parsable URL)`);
       continue;
@@ -467,7 +556,7 @@ function sandboxConfigProblems(env = process.env) {
     const why = hosts.length === 0 ? 'no host' : hosts.map((h) => privateEndpointProblem(h, sandboxProject)).find(Boolean);
     if (why) problems.push(`${key}(${why})`);
   }
-  for (const key of ['PGHOST', 'REDIS_HOST']) {
+  for (const key of Object.keys(e).sort().filter((k) => ENDPOINT_HOST_SETTING_RE.test(k))) {
     if (!str(e[key])) continue;
     const why = privateEndpointProblem(e[key], sandboxProject);
     if (why) problems.push(`${key}(${why})`);
@@ -484,7 +573,11 @@ function sandboxConfigProblems(env = process.env) {
   // in the sandbox project. VERTEX_AI_ENABLED is refused in ANY truthy spelling (the reader takes only 'true', so
   // this is stricter), and the LLM kill switch must be exactly 'true'.
   if (['1', 'true', 'yes', 'y', 'on'].includes(str(e.VERTEX_AI_ENABLED).toLowerCase())) problems.push('VERTEX_AI_ENABLED(must be off in the sandbox)');
+  // Kept as a pin; its only reader (auroraBff/diagRollout.js) is not loaded in the sandbox, so it guarantees nothing alone.
   if (e.LLM_KILL_SWITCH !== 'true') problems.push('LLM_KILL_SWITCH(must be exactly true in the sandbox)');
+  for (const key of Object.keys(e).sort()) {
+    if (VERTEX_PATH_SETTING_RE.test(key)) problems.push(`${key}(no Vertex path may be configured in the sandbox)`);
+  }
   // ...and no LLM provider key may even be PRESENT (empty included), so no non-Vertex path (an API-key Gemini,
   // OpenAI or Anthropic client) has a credential to call with. Matched by NAME, so a key added later is caught too.
   for (const key of Object.keys(e).sort()) {
@@ -650,4 +743,6 @@ module.exports = {
   runAppProjectPart,
   sandboxProjectProblem,
   LLM_KEY_SETTING_RE,
+  VERTEX_PATH_SETTING_RE,
+  canonicalIpv4,
 };
