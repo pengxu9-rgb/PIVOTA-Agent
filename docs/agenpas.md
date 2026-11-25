@@ -474,7 +474,7 @@ Fields the projection reads (tolerant of extra fields, and of the same names at 
 `detail`): `state`, `totals.{currency, our_price_minor, quoted_total_minor, final_total_minor, shipping_minor,
 tax_minor}`, `next_action.{kind, url, expires_at, consent_required}` (or `action`), `order_reference`,
 `poll_after_seconds`, `rail` / `rail_purchase_id` (only to tell the rail), `consent` (see "Terms and privacy consent"),
-`payment_card.{network, last4}` (top level only: see below),
+`payment_card.{network, last4}` (top level only: see below), `agent_display_name` (top level only: see below),
 `detail.{merchant_domain, product_name, variant_title, quantity, currency, refusal_reason, last_error_code,
 merchant_order_status_url, buyer_step, contact_reentry_required}`. Never passed to the page: `rail`, `executor`,
 `rail_purchase_id`, the `pp_` id when the link names a rail id, `detail` itself, owner hashes, consent records and
@@ -487,6 +487,13 @@ is from a fixed list (Visa, Mastercard, American Express, Discover, JCB, UnionPa
 "Card"), never the partner's word as is, and there is no member at all without exactly four digits. The page shows
 "Pay with Visa ending 4242" on the approval screen and "Paid with" on "Your order is placed". A held, stopped or
 earlier screen never names a card, whatever the body says.
+
+THE AGENT'S NAME. A body carries `agent_display_name` only when Pivota has reviewed a name for the purchase's agent
+(the backend's `agents.buyer_display_name`, set by hand; never the name the agent's developer typed at registration).
+The view passes it on every screen, from the top level only, after the same shape check the backend makes (1-64
+characters, NFC, no surrounding or doubled space, no control, format, bidi or zero-width character, at least one letter
+or digit); a name that fails is dropped whole, never repaired. The page shows "Requested by <name>" at the top of the
+summary panel, as text. No name: no line. The page still never shows the agent id.
 
 ## Trying it locally
 

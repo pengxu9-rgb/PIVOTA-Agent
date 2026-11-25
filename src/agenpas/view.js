@@ -701,6 +701,27 @@ function paymentCardFor(raw, screen) {
   return { label, last4 };
 }
 
+// ---- the agent's name ---------------------------------------------------------------------------------------------
+//
+// The backend's top-level `agent_display_name` (pivota-backend docs/agent_purchases_routes.md): the name Pivota
+// REVIEWED for the purchase's agent, set by hand; never the name the agent's developer typed. Read only from the top
+// level (never `detail`). The page says "Requested by <name>". The same shape the backend checks
+// (db/agents.clean_buyer_display_name), checked again here and NEVER repaired: a name that fails is no member at all,
+// so the page shows no line rather than an altered name. 1-64 code points, NFC, no surrounding space, the only space
+// U+0020 and never two in a row, no control / format (bidi, zero-width) / surrogate / private-use / unassigned code
+// point or line / paragraph separator, at least one letter or digit.
+const AGENT_NAME_MAX_CHARS = 64;
+const AGENT_NAME_REFUSED_RE = /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}\p{Zl}\p{Zp}]/u;
+const AGENT_NAME_BAD_SPACE_RE = /[^\S ]| {2}/u;
+const AGENT_NAME_LETTER_RE = /[\p{L}\p{N}]/u;
+
+function agentDisplayNameFor(raw) {
+  if (typeof raw !== 'string' || !raw || raw !== raw.trim()) return null;
+  if ([...raw].length > AGENT_NAME_MAX_CHARS || raw.normalize('NFC') !== raw) return null;
+  if (AGENT_NAME_REFUSED_RE.test(raw) || AGENT_NAME_BAD_SPACE_RE.test(raw)) return null;
+  return AGENT_NAME_LETTER_RE.test(raw) ? raw : null;
+}
+
 function cleanText(value) {
   if (typeof value !== 'string') return null;
   // eslint-disable-next-line no-control-regex
@@ -959,6 +980,9 @@ function buildView(body, {
   // Only when the backend names the card and the screen may show it: otherwise no member at all.
   const paymentCard = paymentCardFor(src.payment_card, screen);
   if (paymentCard) view.payment_card = paymentCard;
+  // Only when the backend names a reviewed name of the right shape: otherwise no member at all.
+  const agentName = agentDisplayNameFor(src.agent_display_name);
+  if (agentName) view.agent_display_name = agentName;
   return { view, record, shippingConsentPending: shippingGated };
 }
 

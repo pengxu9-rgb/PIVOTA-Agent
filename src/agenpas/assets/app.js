@@ -162,6 +162,8 @@
     var items = typeof a.unit_price_minor === 'number' ? money(a.unit_price_minor * qty, view.currency) : null;
     var quoted = money(a.quoted_total_minor, view.currency);
 
+    // The agent's name, only when Pivota reviewed one (the view has no member otherwise): never a self-declared name.
+    if (view.agent_display_name) append(card, el('p', 'hero-agent', 'Requested by ' + view.agent_display_name));
     if (open && quoted) {
       append(card, el('p', 'hero-cap', (view.state === 'placing' ? 'You approved up to ' : "You'll approve up to ") + quoted));
     }

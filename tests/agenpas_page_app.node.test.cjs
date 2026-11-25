@@ -1235,3 +1235,29 @@ test('card: no card line without one, or with a malformed one', async () => {
     assert.match(h.text(), /Approve your purchase/);
   }
 });
+
+test('agent name: "Requested by <name>" in the summary when the view names one, and no line otherwise', async () => {
+  const named = view({ agent_display_name: 'Example Assistant' });
+  const h = harness({ answers: [{ status: 200, body: named }] });
+  h.start();
+  await settle();
+  assert.match(h.text(), /Requested by Example Assistant/);
+  assert.equal(byClass(h, 'hero-agent').length, 1);
+
+  const plain = view({});
+  const h2 = harness({ answers: [{ status: 200, body: plain }] });
+  h2.start();
+  await settle();
+  assert.doesNotMatch(h2.text(), /Requested by/);
+  assert.equal(byClass(h2, 'hero-agent').length, 0);
+});
+
+test('agent name: drawn as text, never as markup', async () => {
+  const named = view({ agent_display_name: '<img src=x onerror=alert(1)>' });
+  const h = harness({ answers: [{ status: 200, body: named }] });
+  h.start();
+  await settle();
+  const [line] = byClass(h, 'hero-agent');
+  assert.equal(line.textContent, 'Requested by <img src=x onerror=alert(1)>');
+  assert.equal((line.children || []).length, 0);
+});
