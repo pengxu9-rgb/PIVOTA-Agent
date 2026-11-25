@@ -9,7 +9,7 @@
  *      environment keeps today's pattern exactly (and so keeps refusing `ak_test_`). `agentApiKeyFormatOk` is the one
  *      format check; src/server.js (invoke auth) and src/commerceMcpOAuth.js (api-key vs OAuth routing) both use it.
  *   2. BOOT CHECK. `assertSandboxConfig` refuses to start a sandbox revision whose settings could reach real money,
- *      prod, or a store's site. It names each offending SETTING and never prints a value. Outside the sandbox it is
+ *      prod, or a store's site, or let the server run its own DB migrations. It names each offending SETTING and never prints a value. Outside the sandbox it is
  *      a no-op.
  *   3. DECISION 4. Copied catalog prices are fresh in the sandbox (`copiedPricesAreFresh`), and every MCP tool
  *      answer carries `sandbox: true` (`markSandboxToolValue` / `markSandboxToolResult`, applied once, in
@@ -252,6 +252,15 @@ function sandboxConfigProblems(env = process.env) {
   for (const flag of LIVE_READ_FLAGS) {
     if (!flagIsOff(e, flag)) problems.push(`${flag.name}(must be off${flag.requireExplicit ? ', set explicitly' : ''})`);
   }
+
+  // The gateway's own DB migrations (src/db/migrations, ledger schema_migrations) are applied in the sandbox by
+  // ONE deliberate run (`node src/db/cli.js migrate`, which never loads this file), never by the server: not at
+  // boot (src/server.js runs them unless DB_AUTO_MIGRATE is 'false') and not on a request. Four modules call
+  // runMigrations() on first use unless SKIP_DB_MIGRATIONS is exactly 'true' (taxonomyStore, telemetry
+  // outcomeStore, layer1 compatibilitySamplesUS and layer1BundleSamplesUS), and their routes are public, so any
+  // caller could otherwise start a full migration run. Both spellings below are exactly what those readers test.
+  if (e.SKIP_DB_MIGRATIONS !== 'true') problems.push('SKIP_DB_MIGRATIONS(must be exactly true)');
+  if (String(e.DB_AUTO_MIGRATE || '').toLowerCase() !== 'false') problems.push('DB_AUTO_MIGRATE(must be false)');
 
   // The gateway's own keys.
   for (const key of SERVICE_KEY_SETTINGS) {

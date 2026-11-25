@@ -45,6 +45,8 @@ const SAFE_SANDBOX = Object.freeze({
   AGENT_AUTH_INTROSPECT_URL: 'https://web-sbx0example-uw.a.run.app/agent/internal/auth/introspect',
   CATALOG_IMAGE_CACHE_JOB_RUNNER_ENABLED: 'false',
   PIVOTA_API_KEY: KEY_TEST,
+  SKIP_DB_MIGRATIONS: 'true',
+  DB_AUTO_MIGRATE: 'false',
 });
 
 /** Today's deployed environments plus the local defaults. None names the sandbox. */
@@ -365,6 +367,47 @@ test('boot check: a live-format key in any of the gateway\'s own key settings is
     assert.equal(refusalOf({ ...SAFE_SANDBOX, [key]: `${KEY_TEST}, ak_test_${'b'.repeat(64)}` }), null, key);
     assert.equal(refusalOf({ ...SAFE_SANDBOX, [key]: 'some-non-ak-service-token' }), null, key);
   }
+});
+
+test('boot check: the server may never run its own DB migrations in the sandbox (boot or first use)', () => {
+  for (const v of [undefined, '', 'false', 'TRUE', 'True', ' true', 'true ', '1', 'yes']) {
+    const env = { ...SAFE_SANDBOX, SKIP_DB_MIGRATIONS: v };
+    if (v === undefined) delete env.SKIP_DB_MIGRATIONS;
+    assert.ok((refusalOf(env) || '').includes('SKIP_DB_MIGRATIONS(must be exactly true)'), JSON.stringify(v));
+  }
+  for (const v of [undefined, '', 'true', '0', 'off', 'no', ' false']) {
+    const env = { ...SAFE_SANDBOX, DB_AUTO_MIGRATE: v };
+    if (v === undefined) delete env.DB_AUTO_MIGRATE;
+    assert.ok((refusalOf(env) || '').includes('DB_AUTO_MIGRATE(must be false)'), JSON.stringify(v));
+  }
+  assert.equal(refusalOf({ ...SAFE_SANDBOX, DB_AUTO_MIGRATE: 'FALSE' }), null, 'the boot reader lowercases');
+  // Outside the sandbox nothing about migrations changes.
+  for (const [name, env] of Object.entries(NON_SANDBOX_ENVS)) {
+    assert.deepEqual(sandbox.sandboxConfigProblems({ ...env, DB_AUTO_MIGRATE: 'true' }), [], name);
+  }
+});
+
+test('boot check: the migration spellings it requires are exactly the ones the real readers test', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const root = path.resolve(__dirname, '..');
+  // The four first-use callers: each skips runMigrations() only on the exact string 'true'.
+  for (const f of ['src/services/taxonomyStore.js', 'src/telemetry/outcomeStore.js',
+    'src/layer1/storage/compatibilitySamplesUS.js', 'src/layer1/storage/layer1BundleSamplesUS.js']) {
+    const src = fs.readFileSync(path.join(root, f), 'utf8');
+    assert.ok(src.includes("process.env.SKIP_DB_MIGRATIONS === 'true'"), f);
+  }
+  // And nothing else in src/ runs the migrations but those four, the boot path and the CLI.
+  const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
+    const p = path.join(dir, d.name);
+    if (d.isDirectory()) return d.name === 'node_modules' ? [] : walk(p);
+    return /\.(c|m)?js$/.test(d.name) && fs.readFileSync(p, 'utf8').includes('await runMigrations()') ? [path.relative(root, p)] : [];
+  });
+  const callers = walk(path.join(root, 'src')).sort();
+  assert.deepEqual(callers, ['src/db/cli.js', 'src/layer1/storage/compatibilitySamplesUS.js', 'src/layer1/storage/layer1BundleSamplesUS.js',
+    'src/server.js', 'src/services/taxonomyStore.js', 'src/telemetry/outcomeStore.js']);
+  const server = fs.readFileSync(path.join(root, 'src/server.js'), 'utf8');
+  assert.ok(server.includes("String(process.env.DB_AUTO_MIGRATE || '').toLowerCase() === 'false'"), 'the boot reader');
 });
 
 test('boot check: a test runtime (which can bypass invoke auth) is refused in the sandbox', () => {

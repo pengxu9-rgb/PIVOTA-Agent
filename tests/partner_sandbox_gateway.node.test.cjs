@@ -131,6 +131,8 @@ const SAFE_SANDBOX = {
   AGENPAS_CONSENT_ENABLED: 'true',
   PIVOTA_API_BASE: 'https://web-sbx0example-uw.a.run.app',
   CATALOG_IMAGE_CACHE_JOB_RUNNER_ENABLED: 'false',
+  SKIP_DB_MIGRATIONS: 'true',
+  DB_AUTO_MIGRATE: 'false',
 };
 
 /** Require src/server.js in a child with exactly `extra` over a scrubbed env; it never listens (require.main). */
