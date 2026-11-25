@@ -344,6 +344,21 @@ test('operator_confirmed_not_charged: the operator wording once, no second "try 
   assert.equal(h.pollTimers().length, 0);
 });
 
+test('operator_confirmed_declined: the declined wording once, no second "try again" line, polling stops', async () => {
+  const done = view({
+    state: 'failed', screen: 'failed', terminal: true, action: null, poll_after_seconds: null,
+    outcome: { kind: 'payment_declined', title: 'Your payment was declined', message: "The payment was declined, so the order wasn't placed and you weren't charged. You can start again from the chat.", retry_hint: true, outcome_unknown: false },
+  });
+  const h = harness({ answers: [{ status: 200, body: done }] });
+  h.start();
+  await settle();
+  assert.match(h.text(), /Your payment was declined/);
+  assert.match(h.text(), /you weren't charged/);
+  assert.equal(/try again/i.test(h.text()), false);
+  assert.equal((h.text().match(/start again from the chat/g) || []).length, 1);
+  assert.equal(h.pollTimers().length, 0);
+});
+
 // ---- the shipping address form (AGENPAS_COLLECT_SHIPPING) -----------------------------------------------------
 
 function addressView(fields, prefill = {}) {

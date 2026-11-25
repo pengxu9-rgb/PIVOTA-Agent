@@ -23,7 +23,7 @@ const {
   projectPurchaseView, isKnownFinalCode, HELD_CODES, FINAL_CHECKING_CODES,
 } = require('../src/agenpas/view');
 
-const PINNED_BACKEND_SHA = '838643e34';
+const PINNED_BACKEND_SHA = 'ec53ab7f6';
 const MIRROR = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'agenpas_backend_final_codes.backend.json'), 'utf8'));
 const BACKEND = Object.freeze({ a2a: MIRROR.a2a, reap: MIRROR.reap });
 
@@ -41,6 +41,7 @@ const COPY = Object.freeze({
   not_purchasable: { kind: 'not_purchasable', title: "This item can't be bought here right now", message: "This item can't be bought through AgenPaz at the moment. Nothing more needs to be done.", retry_hint: false, outcome_unknown: false },
   not_submitted: { kind: 'not_submitted', title: "This purchase didn't go through", message: "The store's checkout couldn't be completed, so no order was sent to the store.", retry_hint: false, outcome_unknown: false },
   post_checkout_failed: { kind: 'failed', title: "This purchase didn't complete", message: 'Go back to the chat for the latest on this purchase.', retry_hint: false, outcome_unknown: false },
+  payment_declined: { kind: 'payment_declined', title: 'Your payment was declined', message: "The payment was declined, so the order wasn't placed and you weren't charged. You can start again from the chat.", retry_hint: true, outcome_unknown: false },
   checking: { kind: 'outcome_unknown', title: "We're checking with the store", message: "We're checking with the store — don't try again. Your order may already be in progress, and we'll confirm what happened in the chat.", retry_hint: false, outcome_unknown: true },
 });
 
@@ -59,6 +60,8 @@ const PINNED = [
   ['a2a', 'failed', 'reconcile_exhausted', 'not_submitted'],
   ['a2a', 'failed', 'card_binding_expired', 'card_not_added'],
   ['a2a', 'failed', 'vic_checkout_failed', 'post_checkout_failed'],
+  // The operator's close-declined (a literal in db/a2a_rail_ledger.py's fenced write, not a worker code).
+  ['a2a', 'failed', 'operator_confirmed_declined', 'payment_declined'],
   ['reap', 'failed', 'attempts_exhausted', 'not_started'],
   ['reap', 'failed', 'contact_reentry_lapsed', 'not_started'],
   ['reap', 'expired', 'contact_reentry_lapsed', 'not_started'],
@@ -90,12 +93,13 @@ test('the mirror is the pinned backend commit, and it names both rails\' three f
   for (const rail of ['a2a', 'reap']) for (const state of ['failed', 'refused', 'expired']) assert.ok(BACKEND[rail][state].length > 0, `${rail}/${state}`);
   // The codes the review named are in the mirror (found at their write sites, not typed in).
   for (const [rail, state, code] of [['a2a', 'expired', 'shipping_address_not_collected'], ['reap', 'refused', 'pilot_scope_invalid'],
-    ['reap', 'refused', 'pilot_scope_refused'], ['reap', 'failed', 'attempts_exhausted'], ['a2a', 'expired', 'stale']]) {
+    ['reap', 'refused', 'pilot_scope_refused'], ['reap', 'failed', 'attempts_exhausted'], ['a2a', 'expired', 'stale'],
+    ['a2a', 'failed', 'operator_confirmed_declined']]) {
     assert.ok(BACKEND[rail][state].includes(code), `${rail}/${state}/${code}`);
   }
 });
 
-test('parity with backend 838643e34 (both rails): every final code in the mirror is on an explicit gateway list', () => {
+test('parity with backend ec53ab7f6 (both rails): every final code in the mirror is on an explicit gateway list', () => {
   const missing = [];
   for (const [rail, byState] of Object.entries(BACKEND)) {
     for (const [state, codes] of Object.entries(byState)) {
