@@ -996,3 +996,38 @@ test('hosts are checked as fetch decodes them: percent-encoded dots do not hide 
   assert.match(refusalOf({ ...SAFE_SANDBOX, SOME_URL: 'https://api\u3002pivota\u3002cc/x' }) || '', /SOME_URL\((prod or staging host|names a non-sandbox pivota\.cc host)\)/);
   assert.match(refusalOf({ ...SAFE_SANDBOX, SOME_URL: 'https://web-zq7stand1n-uw\uFF0Ea\uFF0Erun\uFF0Eapp' }) || '', /SOME_URL\(prod or staging host\)/);
 });
+
+// --------------------------------------------------------------------------------------------------------------
+// 11. The repo never names a refused private IP, in ANY spelling libc would read (the canonical-form scrub).
+// --------------------------------------------------------------------------------------------------------------
+
+test('repo scrub: no file names a refused prod/staging private IP, in any spelling (canonical-form scan)', { timeout: 120000 }, () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const root = path.resolve(__dirname, '..');
+  const SKIP_DIRS = new Set(['node_modules', '.git', 'fixtures', 'datasets']);
+  const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
+    const p = path.join(dir, d.name);
+    if (d.isDirectory()) return SKIP_DIRS.has(d.name) ? [] : walk(p);
+    return /\.((c|m)?(js|ts)|json|md|sql|sh|ya?ml|py|txt)$/.test(d.name) ? [p] : [];
+  });
+  const RFC1918 = /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/;
+  const shipped = new Set(sandbox.SHIPPED_REFUSED_IP_DIGESTS);
+  const seen = new Map();
+  const hits = [];
+  for (const dir of ['src', 'mcp-server/src', 'tests', 'scripts', 'docs', 'infra', 'ops']) {
+    const abs = path.join(root, dir);
+    if (!fs.existsSync(abs)) continue;
+    for (const f of walk(abs)) {
+      const text = fs.readFileSync(f, 'utf8');
+      if (text.length > 2e6) continue;
+      for (const m of text.toLowerCase().matchAll(/(?<![0-9a-z.])(?:0x[0-9a-f]+|[0-9]+)(?:\.(?:0x[0-9a-f]+|[0-9]+)){1,3}(?![0-9a-z])/g)) {
+        const c = sandbox.canonicalIpv4(m[0]);
+        if (!c || !RFC1918.test(c)) continue;
+        if (!seen.has(c)) seen.set(c, shipped.has(sandbox.projectPartDigest(c)));
+        if (seen.get(c)) hits.push(path.relative(root, f)); // the path only, never the value
+      }
+    }
+  }
+  assert.deepEqual(hits, [], `files naming a refused IP: ${[...new Set(hits)].join(', ')}`);
+});
