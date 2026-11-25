@@ -8,7 +8,7 @@ const { loadRolesLatest, buildRoleNormalizer } = require('../layer2/dicts/roles'
 const { applyNormalization, buildRoleCandidatesFromDict, suggestRoleIdsForHint } = require('../layer2/kb/roleHintIntegrity');
 const { canonicalizeUrl, hostnameMatchesAllowlist, stableOfferIdFromCanonicalUrl, validateHttpUrlOrThrow } = require('../layer3/external/urlUtils');
 const { resolveExternalOffer } = require('../layer3/external/externalOfferResolver');
-const { isProduction } = require('../config/platform');
+const { isProduction, isSandbox } = require('../config/platform');
 
 /**
  * Constant-time string comparison. Same shape as src/server.js and auroraBff/authStore.js.
@@ -376,7 +376,8 @@ function mountRecommendationRoutes(app) {
     // caller already uses - including the Cloud Run fail-closed case, so a revision that loses
     // PIVOTA_ENV is still treated as production instead of re-opening this.
     if (!expected) {
-      if (isProduction()) {
+      // The partner sandbox is public: an empty key refuses there as in production, never opens the route.
+      if (isProduction() || isSandbox()) {
         res.status(500).json({ error: 'CONFIG_MISSING', message: 'Missing RECOMMENDATIONS_INTERNAL_KEY' });
         return false;
       }

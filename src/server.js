@@ -13,6 +13,9 @@ const vertexGemini = require('./llm/vertexGemini');
  */
 require('dotenv').config();
 require('./config/storedCatalogRehearsal').assertStoredCatalogRehearsal();
+// PIVOTA_ENV=sandbox only (a no-op everywhere else): refuse to load a partner-sandbox gateway whose settings could
+// reach real money, prod, or a store's site. Names the settings, never their values (src/config/sandbox.js).
+require('./config/sandbox').assertSandboxConfig();
 const {
   marketsForRequest, primaryMarket, servedMarkets, marketBind, laneMarkets,
 } = require('./services/servedMarkets');
@@ -31080,7 +31083,9 @@ function extractInvokeAuthToken(req) {
   return bearer || null;
 }
 
-const INVOKE_EXTERNAL_API_KEY_PATTERN = /^ak_(live_)?[0-9a-f]{64}$/;
+// The key FORMAT this environment accepts lives in ONE place, src/config/sandbox.js agentApiKeyFormatOk: today's
+// `ak_(live_)?<64 hex>` everywhere, `ak_test_<64 hex>` only under PIVOTA_ENV=sandbox. Read per request.
+const { agentApiKeyFormatOk: invokeApiKeyFormatOk, sandboxVersionFields } = require('./config/sandbox');
 const invokeAuthCache = new Map();
 const AGENT_AUTH_EMERGENCY_FALLBACK_ENABLED = parseBooleanEnv(
   process.env.AGENT_AUTH_EMERGENCY_FALLBACK_ENABLED,
@@ -31790,7 +31795,7 @@ async function requireExternalInvokeAuth(req, res, next, { acceptsCheckoutToken 
     });
   }
 
-  if (!INVOKE_EXTERNAL_API_KEY_PATTERN.test(provided)) {
+  if (!invokeApiKeyFormatOk(provided)) {
     logger.warn(
       {
         path: req?.path || null,
@@ -40018,6 +40023,8 @@ app.get('/version', (req, res) => {
     branch: SERVICE_GIT_BRANCH || null,
     deployment_id: SERVICE_DEPLOYMENT_ID || null,
     started_at: SERVICE_STARTED_AT,
+    // `env: "sandbox"` in the partner sandbox only; nothing added anywhere else.
+    ...sandboxVersionFields(),
   });
 });
 

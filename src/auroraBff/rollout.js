@@ -1,5 +1,5 @@
 const crypto = require('crypto');
-const { isProduction, commitSha } = require('../config/platform');
+const { isProduction, isSandbox, commitSha } = require('../config/platform');
 
 const ROLLOUT_VARIANT = Object.freeze({
   LEGACY: 'legacy',
@@ -104,7 +104,8 @@ function resolveForcedVariant({ req }) {
   // The env test was `RAILWAY_ENVIRONMENT || NODE_ENV === 'production'` — RAILWAY_ENVIRONMENT
   // is the arm that fires in prod (prod sets no NODE_ENV) and is unset on Cloud Run, where
   // this guard would have gone silent and let any caller pin their own rollout variant.
-  if (!isProduction()) return forced;
+  // The partner sandbox is public, so it guards this header as production does.
+  if (!isProduction() && !isSandbox()) return forced;
 
   if (!toBool(process.env.AURORA_FORCE_VARIANT_ENABLED, false)) return null;
   const expectedDebugKey = String(process.env.AURORA_FORCE_VARIANT_DEBUG_KEY || '').trim();
