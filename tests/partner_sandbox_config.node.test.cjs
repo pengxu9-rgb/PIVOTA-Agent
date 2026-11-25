@@ -882,3 +882,38 @@ test('lexical-only: Vertex is refused in any truthy spelling, and the LLM kill s
     assert.deepEqual(sandbox.sandboxConfigProblems({ ...env, VERTEX_AI_ENABLED: 'true' }), [], name);
   }
 });
+
+test('lexical-only (hard): no LLM provider key may be present in the sandbox, not even empty', () => {
+  const KEYS = ['GEMINI_API_KEY', 'PIVOTA_GEMINI_API_KEY', 'FALLBACK_GEMINI_API_KEY', 'GOOGLE_API_KEY', 'OPENAI_API_KEY',
+    'ANTHROPIC_API_KEY', 'LLM_API_KEY', 'AURORA_DIAG_GEMINI_API_KEY', 'AURORA_RECO_GEMINI_API_KEY', 'AURORA_SKIN_GEMINI_API_KEY',
+    'AURORA_TRAVEL_GEMINI_API_KEY', 'AURORA_VISION_GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'SOME_NEW_CLAUDE_TOKEN'];
+  for (const key of KEYS) {
+    for (const value of ['x', '']) {
+      assert.ok((refusalOf({ ...SAFE_SANDBOX, [key]: value }) || '').includes(`${key}(no LLM key may be set in the sandbox)`), `${key}=${JSON.stringify(value)}`);
+    }
+  }
+  for (const key of ['LLM_KILL_SWITCH', 'GEMINI_JSON_TIMEOUT', 'FIND_PRODUCTS_MULTI_INTENT_LLM_GEMINI_MAX_OUTPUT_TOKENS', 'PIVOTA_INTENT_LLM_ENABLED', 'GOOGLE_CLOUD_PROJECT']) {
+    assert.equal(sandbox.LLM_KEY_SETTING_RE.test(key), false, key);
+  }
+  for (const [name, env] of Object.entries(NON_SANDBOX_ENVS)) {
+    assert.deepEqual(sandbox.sandboxConfigProblems({ ...env, GEMINI_API_KEY: 'x', OPENAI_API_KEY: 'y' }), [], name);
+  }
+});
+
+test('lexical-only (hard): every provider key name src/ reads is caught by the pattern (a new one cannot slip past)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const root = path.resolve(__dirname, '..');
+  const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
+    const p = path.join(dir, d.name);
+    if (d.isDirectory()) return d.name === 'node_modules' ? [] : walk(p);
+    return /\.(c|m)?js$/.test(d.name) ? [p] : [];
+  });
+  const names = new Set();
+  for (const f of [...walk(path.join(root, 'src')), ...walk(path.join(root, 'mcp-server', 'src'))]) {
+    for (const m of fs.readFileSync(f, 'utf8').matchAll(/\b([A-Z0-9_]*(?:GEMINI|OPENAI|ANTHROPIC|CLAUDE)[A-Z0-9_]*_(?:API_KEY|KEY|TOKEN|SECRET))\b/g)) names.add(m[1]);
+  }
+  names.delete('MISSING_GEMINI_KEY'); // an error code string, not a setting
+  for (const must of ['GEMINI_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'PIVOTA_GEMINI_API_KEY']) assert.ok(names.has(must), `the scan should see ${must}`);
+  for (const n of names) assert.equal(sandbox.LLM_KEY_SETTING_RE.test(n), true, n);
+});

@@ -301,6 +301,12 @@ function sandboxProjectProblem(id) {
 /** Settings that name a GCP project the gateway talks to: each, when set, must be the sandbox's own project. */
 const PROJECT_SETTINGS = Object.freeze(['PRICE_CACHE_FIRESTORE_PROJECT', 'PIVOTA_AGENT_CENTER_GEMINI_VERTEX_PROJECT']);
 
+/** An LLM provider credential setting, by name: <...>_<PROVIDER>[_...]_(API_KEY|KEY|TOKEN|API_TOKEN|SECRET), plus
+ *  GOOGLE_API_KEY. Today that is GEMINI_API_KEY, PIVOTA_GEMINI_API_KEY, FALLBACK_GEMINI_API_KEY, GOOGLE_API_KEY,
+ *  OPENAI_API_KEY, ANTHROPIC_API_KEY, LLM_API_KEY and AURORA_{DIAG,RECO,SKIN,TRAVEL,VISION}_GEMINI_API_KEY. Not
+ *  LLM_KILL_SWITCH, GEMINI_JSON_TIMEOUT or *_MAX_OUTPUT_TOKENS (they hold no credential). */
+const LLM_KEY_SETTING_RE = /^(?:[A-Z0-9_]*_)?(?:GEMINI|OPENAI|ANTHROPIC|CLAUDE|LLM|GENAI|OPENROUTER|DASHSCOPE|DEEPSEEK|MISTRAL|COHERE|GROQ|PERPLEXITY|XAI)(?:_[A-Z0-9]+)*_(?:API_KEY|KEY|TOKEN|SECRET|API_TOKEN)$|^GOOGLE_API_KEY$/;
+
 /**
  * The settings that name the backend this gateway calls. PIVOTA_API_BASE is REQUIRED (unset, the gateway calls
  * http://localhost:8080); each of the others, when set, must not name a refused host either.
@@ -479,6 +485,11 @@ function sandboxConfigProblems(env = process.env) {
   // this is stricter), and the LLM kill switch must be exactly 'true'.
   if (['1', 'true', 'yes', 'y', 'on'].includes(str(e.VERTEX_AI_ENABLED).toLowerCase())) problems.push('VERTEX_AI_ENABLED(must be off in the sandbox)');
   if (e.LLM_KILL_SWITCH !== 'true') problems.push('LLM_KILL_SWITCH(must be exactly true in the sandbox)');
+  // ...and no LLM provider key may even be PRESENT (empty included), so no non-Vertex path (an API-key Gemini,
+  // OpenAI or Anthropic client) has a credential to call with. Matched by NAME, so a key added later is caught too.
+  for (const key of Object.keys(e).sort()) {
+    if (LLM_KEY_SETTING_RE.test(key)) problems.push(`${key}(no LLM key may be set in the sandbox)`);
+  }
 
   // Live reads and store fetches.
   for (const flag of LIVE_READ_FLAGS) {
@@ -638,4 +649,5 @@ module.exports = {
   SANDBOX_MARKED_PATHS,
   runAppProjectPart,
   sandboxProjectProblem,
+  LLM_KEY_SETTING_RE,
 };
