@@ -14,7 +14,8 @@ What it reads (static values only):
        last_error_code= / refusal_reason=)`, `_token_failed(s, state, code)`, `_checkout_failed(s, code)`,
        `_cancel_checkout(s, code)`; module constants (also from a2a_shipping_address.py); `f"x:{...}"` codes keep their
        head as `x:<arg>`; `_code("x", result)` is `x:<kind>:<status>`; `ended = {...}` tuples.
-       db/a2a_rail_ledger.py: the codes the expiry sweep writes (`THEN '<code>'` / `ELSE '<code>'`).
+       db/a2a_rail_ledger.py: the codes the expiry sweep writes (`THEN '<code>'` / `ELSE '<code>'`), and a `failed`
+       write that names its code as a literal (`last_error_code = '<code>'`, the operator's close-declined).
   Reap services/reap_agentic_purchase.py: every `_move(..., "<final>", last_error_code= / refusal_reason=)`, the
        `_QUOTE_REFUSAL_KINDS` values, the `PurchaseRefused("<reason>")` literals of `_row_scope` and the pilot-scope
        functions behind it (written as `refusal_reason=exc.reason`), the static returns of the verdict helpers, and,
@@ -208,6 +209,10 @@ def a2a(repo, sha, out, dynamic):
     for sql in re.findall(r"SET state = 'failed',\s*last_error_code = :code", ledger):
         dynamic.append(f"a2a/failed {A2A_LEDGER} operator resolve (:code; operator_confirmed_not_charged, jobs/a2a_rail_operator.py)")
         add(out, "a2a", "failed", "operator_confirmed_not_charged", dynamic, "")
+    # A terminal write that names its code as a literal (the operator's `close-declined`:
+    # `SET state = 'failed', last_error_code = 'operator_confirmed_declined'`).
+    for code in re.findall(r"SET state = 'failed',\s*last_error_code = '([a-z_]+)'", ledger):
+        add(out, "a2a", "failed", code, dynamic, f"{A2A_LEDGER} literal failed write")
 
 
 def reap(repo, sha, out, dynamic):

@@ -83,7 +83,7 @@ const ORDER_REF_RE = /^[A-Za-z0-9#._:/-]{1,64}$/;
 // ---- failure reasons -------------------------------------------------------------------------------------------
 //
 // The backend's failure / refusal / hold codes, mapped to plain language. A code is NEVER shown to the buyer.
-// Mirrors pivota-backend 838643e34 (the hold sets unchanged since 229d1e587; services/payment_orchestration/a2a_rail_worker.py: `_CHECKOUT_HOLD_CODES` (24),
+// Mirrors pivota-backend ec53ab7f6 (the hold sets unchanged since be#2910 a7d9b523a; services/payment_orchestration/a2a_rail_worker.py: `_CHECKOUT_HOLD_CODES` (25),
 // `_VIC_HOLD_CODES`, and the worker's terminal and parking codes).
 //
 // SEGMENTS. Codes are lower-cased and split on ':'. `paid_sent:<n>:<variant>:<code>`, `bound_sent:<n>:<code>`: the
@@ -191,6 +191,11 @@ const FAILED_CODES = new Set([
   // An OPERATOR ended a held checkout after checking the provider's side: no order and no charge
   // (pivota-backend jobs/a2a_rail_operator.py). Its own wording below.
   'operator_confirmed_not_charged',
+  // An OPERATOR closed a `checkout_payment_reached_declined` hold (or a legacy `checkout_payment_reached_unconfirmed`
+  // one, with a bound lookup) after the provider confirmed IN WRITING that the payment was declined: no authorization
+  // approved or captured, no order at the merchant (pivota-backend jobs/a2a_rail_operator.py `close-declined`,
+  // db/a2a_rail_ledger.py). Its own wording below.
+  'operator_confirmed_declined',
   // REAP (pivota-backend services/reap_agentic_purchase.py): only the codes written BEFORE any Reap checkout exists.
   ...REAP_FAILED_CODES,
 ]);
@@ -202,8 +207,12 @@ const FAILED_CODES = new Set([
  */
 const FINAL_CHECKING_CODES = new Set(['manual_provider_expired', 'manual_provider_failed']);
 
-/** The one FAILED code whose wording may say the buyer was not charged: a human verified it at the provider. */
+/**
+ * The only FAILED codes whose wording may say the buyer was not charged: a human verified it at the provider
+ * (`operator_confirmed_not_charged`), or the provider confirmed a decline in writing (`operator_confirmed_declined`).
+ */
 const OPERATOR_NOT_CHARGED_CODES = new Set(['operator_confirmed_not_charged']);
+const OPERATOR_DECLINED_CODES = new Set(['operator_confirmed_declined']);
 
 /** Held for a check (the backend keeps the purchase in `paying`): the order may exist, or money may have moved. */
 const HELD_CODES = new Set([
@@ -217,7 +226,10 @@ const HELD_CODES = new Set([
   'checkout_confirm_not_sent', 'checkout_paying_without_task',
   // The provider reported payment-reached without success: money may have moved.
   'checkout_payment_reached_unconfirmed',
-  // After the confirm, the provider's answer echoed a card code and was scrubbed: held, and one of the backend's six
+  // The provider reported payment-reached with success EXACTLY false and no order id: a measured decline, but still
+  // a payment-reached hold until a human closes it on the provider's written word (`operator_confirmed_declined`).
+  'checkout_payment_reached_declined',
+  // After the confirm, the provider's answer echoed a card code and was scrubbed: held, and one of the backend's seven
   // payment-reached codes (`_CHECKOUT_PAYMENT_REACHED_CODES`): never "not charged".
   'checkout_answer_scrubbed',
   'money_result_seen',
@@ -277,6 +289,14 @@ const NOT_CHARGED_COPY = Object.freeze({
   kind: 'not_charged',
   title: "This purchase didn't go through",
   message: "This purchase didn't go through and you weren't charged. You can start again from the chat.",
+  retry_hint: true,
+  outcome_unknown: false,
+});
+
+const DECLINED_COPY = Object.freeze({
+  kind: 'payment_declined',
+  title: 'Your payment was declined',
+  message: "The payment was declined, so the order wasn't placed and you weren't charged. You can start again from the chat.",
   retry_hint: true,
   outcome_unknown: false,
 });
@@ -611,9 +631,11 @@ function outcomeFor(state, codes) {
   if (c && c.kind === 'failed') {
     // HELD has already won above if any hold code is present. "You weren't charged" is said ONLY when nothing else on
     // the purchase is even hold-SHAPED: a claim that strong needs a clean record; otherwise, the checking wording.
-    if (segments.some((seg) => OPERATOR_NOT_CHARGED_CODES.has(seg))) {
+    const declined = segments.some((seg) => OPERATOR_DECLINED_CODES.has(seg));
+    if (declined || segments.some((seg) => OPERATOR_NOT_CHARGED_CODES.has(seg))) {
       const holdShaped = segments.some(isHoldShaped);
-      return holdShaped ? { ...OUTCOME_UNKNOWN_COPY } : { ...NOT_CHARGED_COPY };
+      if (holdShaped) return { ...OUTCOME_UNKNOWN_COPY };
+      return declined ? { ...DECLINED_COPY } : { ...NOT_CHARGED_COPY };
     }
     return { ...NOT_SUBMITTED_COPY };
   }
