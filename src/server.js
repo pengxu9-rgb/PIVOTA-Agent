@@ -129,6 +129,8 @@ const { probePdpRouteIdExistence } = require('./services/pdpRouteIdExistence');
 const { normalizeShopifyAdminHost } = require('./services/shopifyAdminHost');
 const { createPublicNetworkFetch } = require('./services/ucpBuyerAgentClient');
 const { overlayLiveMerchantSearchPrices, searchTopKSettings } = require('./services/liveMerchantSearchPrice');
+// Cafe24 Global Catalog, search-only and shadow-only (CAFE24_CATALOG_SEARCH, default off): counts, never served.
+const cafe24GlobalCatalog = require('./services/cafe24GlobalCatalog');
 // Recommendation price tiers on list rows (LIST_ROW_PRICE_AS_OF, PRICE_STALENESS_DEMOTE; both default off).
 const listPriceTiers = require('./services/listPriceTiers');
 // The door caches' price-freshness cap (DOOR_CACHE_PRICE_FRESHNESS_CAP, default off) and its side channel.
@@ -14518,7 +14520,30 @@ function applySearchListPriceTiers(response, { search = {}, intent = null, budge
 // The overlay. The list price tiers are NOT applied here: a search answer is tiered once, at the invoke route's
 // final exit (finalizeSearchListPriceTiers), after every step that can still replace or reorder its list.
 function maybeOverlayLiveSearchPrice(response, search = {}, opts = {}) {
+  maybeShadowCafe24CatalogSearch(response, search, opts);
   return maybeOverlayLiveSearchPriceRaw(response, search, opts);
+}
+
+// CAFE24 GLOBAL CATALOG SHADOW (services/cafe24GlobalCatalog.js). Every served search page passes through the overlay
+// above, so this is the one place both search paths meet. Off by default (CAFE24_CATALOG_SEARCH); in `shadow` it starts
+// one bounded Cafe24 search for the same query and market and LOGS COUNTS. It is never awaited, never throws, and
+// nothing it learns reaches `response`: no Cafe24 seller is admitted (ADR-033) and no Cafe24 offer is buyable.
+// A synthetic call makes no live read; only page 1 is observed.
+function maybeShadowCafe24CatalogSearch(response, search = {}, { buyerMarket = undefined } = {}) {
+  try {
+    if (cafe24GlobalCatalog.readMode() !== cafe24GlobalCatalog.MODES.SHADOW) return;
+    if (!syntheticLiveReadsAllowed()) return;
+    if (Number(search.page || 1) > 1 || Number(search.offset || 0) > 0) return;
+    const market = typeof buyerMarket === 'string' && buyerMarket.trim()
+      ? buyerMarket.trim()
+      : (typeof search.market === 'string' ? search.market : undefined);
+    const served = response && Array.isArray(response.products) ? response.products.length : null;
+    cafe24GlobalCatalog.defaultLane(logger)
+      .observeSearch({ query: extractSearchQueryText(search), market, servedCount: served })
+      .catch(() => {});
+  } catch (_) {
+    // The shadow never reaches the page.
+  }
 }
 
 /**
