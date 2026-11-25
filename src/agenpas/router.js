@@ -10,6 +10,11 @@
  *   GET /agenpas/api/p/:purchaseId                 JSON for the page: the SAFE projection (view.js). The token comes
  *                                                  ONLY in the `X-Agenpas-Link` header; a `?t=` query is ignored, so
  *                                                  a token never lands in a URL or an access log.
+ *   GET /agenpas/api/p/:purchaseId/image           the purchase's product image (productImage.js): the bytes of the
+ *                                                  image the backend's read names for THIS purchase, fetched server-
+ *                                                  side, never a URL from the browser. Token in `X-Agenpas-Link` only;
+ *                                                  404 no_image when there is none or it cannot be fetched as a JPEG,
+ *                                                  PNG or WebP. app.js turns the bytes into a data: URL.
  *   GET /agenpas/assets/app.js | app.css           the page's script and style (same origin: CSP 'self')
  *   GET /agenpas/dev/start?scenario=<name>         LOCAL DEVELOPMENT ONLY (devFixtures.js): mints a fixture link
  *   POST /agenpas/api/p/:purchaseId/consent        ONLY while AGENPAS_CONSENT_ENABLED is on (off: not ours, and the
@@ -51,6 +56,7 @@ const { sanitizeFieldErrors, validateAddress } = require('./shippingAddress');
 const { createTokenBucketLimiter } = require('../services/publicReadRateLimit');
 const { clientIpFromRequest } = require('../guardrails/gatewayGuardrails');
 const { SCENARIOS, createFixtures } = require('./devFixtures');
+const { productImageUrlFor } = require('./productImage');
 
 const ASSET_DIR = path.join(__dirname, 'assets');
 const ASSETS = Object.freeze({
@@ -66,6 +72,10 @@ const TOKEN_LIMIT = Object.freeze({ capacity: 10, refillPerSecond: 2 });
 // The address write, per link token: 5 a minute.
 const ADDRESS_LIMIT = Object.freeze({ capacity: 5, refillPerSecond: 5 / 60 });
 const ADDRESS_BODY_MAX_BYTES = 4096;
+// The image, per link token: a page asks once per load, so a burst of 5 and one every 5 s only ever stops a script.
+const IMAGE_LIMIT = Object.freeze({ capacity: 5, refillPerSecond: 1 / 5 });
+// An image answer is the image alone: nothing in it may run, load or be framed.
+const IMAGE_CSP = "default-src 'none'; sandbox";
 const SHIPPING_PATH_RE = /^\/agenpas\/api\/p\/(?:pp|ap|rp)_[0-9a-f]{24}\/shipping-address$/;
 
 function isJsonContentType(req) {
@@ -304,6 +314,7 @@ function consentBodyOf(body) {
  *   consentWriter?: { record: (claims, consent) => Promise<object> },  the backend consent write (purchaseReader.js)
  *   fixtureReader?: { read: Function },               tests only
  *   fixtureConsentWriter?: { record: Function },      tests only
+ *   imageFetcher?: { get: (url) => Promise<object> },  the product image fetch (productImage.js; src/server.js wires it)
  *   limits?: { token?: object, ip?: object },         tests only: token bucket options
  * }} deps
  */
@@ -337,6 +348,8 @@ function createAgenpasRouter(deps = {}) {
   const tokenBuckets = createTokenBucketLimiter({ ...TOKEN_LIMIT, ...(limits.token || {}), now });
   const addressBuckets = createTokenBucketLimiter({ ...ADDRESS_LIMIT, ...(limits.address || {}), now });
   const ipBuckets = createTokenBucketLimiter({ ...IP_LIMIT, ...(limits.ip || {}), now });
+  const imageBuckets = createTokenBucketLimiter({ ...IMAGE_LIMIT, ...(limits.image || {}), now });
+  const imageFetcher = deps.imageFetcher && typeof deps.imageFetcher.get === 'function' ? deps.imageFetcher : null;
 
   // SAMPLED refusal logs: the first few per reason per minute, then one line carrying how many were not logged.
   const sampled = new Map();
@@ -492,6 +505,53 @@ function createAgenpasRouter(deps = {}) {
     log('warn', { surface: 'api', outcome: 'unavailable', reason: (answer && typeof answer.code === 'string' && answer.code) || 'unknown' });
     res.setHeader('Retry-After', String(UNAVAILABLE_RETRY_AFTER_SECONDS));
     return res.status(503).json({ error: 'unavailable', retry_after_seconds: UNAVAILABLE_RETRY_AFTER_SECONDS });
+  });
+
+  /*
+   * THE PRODUCT IMAGE (productImage.js). Same gates as the read (IP bucket first, the link token in X-Agenpas-Link
+   * only, its own per-token bucket), then the SAME single-flight read: the URL is the one the backend names for this
+   * purchase, re-checked here. The request carries no URL and none is ever taken from it. Every failure is one
+   * answer, 404 no_image: the page then simply shows no image.
+   */
+  router.get('/agenpas/api/p/:purchaseId/image', async (req, res) => {
+    const env = envOf();
+    setCommonHeaders(res);
+    const purchaseId = req.params.purchaseId;
+    if (!ipBuckets.allow(`ip:${digest(clientIpFromRequest(req) || 'unknown')}`)) return tooMany(res, 'image', 'rate_limited_ip');
+    if (!PURCHASE_ID_RE.test(purchaseId)) {
+      logRefusal({ surface: 'image', reason: 'bad_purchase_id' });
+      return res.status(404).json({ error: 'link_invalid' });
+    }
+    const token = firstString(req.headers[LINK_HEADER]);
+    const verdict = verify(token, purchaseId);
+    if (!verdict.ok) {
+      logRefusal({ surface: 'image', reason: verdict.reason });
+      if (verdict.reason === REASON.noSecret) return res.status(503).json({ error: 'unavailable' });
+      if (verdict.reason === REASON.expired) return res.status(410).json({ error: 'link_expired' });
+      return res.status(404).json({ error: 'link_invalid' });
+    }
+    if (!imageBuckets.allow(`t:${digest(token)}`)) return tooMany(res, 'image', 'rate_limited_token');
+    const fixture = fixturesFor(req, env);
+    const answer = await readOnce(fixture ? fixtureReader : backendReader, verdict.claims, fixture);
+    const url = answer && answer.kind === 'accepted' && answer.purchase ? productImageUrlFor(answer.purchase.product_image_url) : null;
+    if (!url || !imageFetcher) {
+      logRefusal({ surface: 'image', reason: !url ? 'no_image_url' : 'no_fetcher' });
+      return res.status(404).json({ error: 'no_image' });
+    }
+    let image;
+    try {
+      image = await imageFetcher.get(url);
+    } catch {
+      image = { ok: false, reason: 'threw' };
+    }
+    if (!image || !image.ok) {
+      logRefusal({ surface: 'image', reason: (image && image.reason) || 'unknown' });
+      return res.status(404).json({ error: 'no_image' });
+    }
+    log('info', { surface: 'image', outcome: 'served', type: image.type });
+    res.setHeader('Content-Security-Policy', IMAGE_CSP);
+    res.setHeader('Content-Type', image.type);
+    return res.status(200).send(image.body);
   });
 
   /*
@@ -775,6 +835,7 @@ const ADMITTED_PATHS = [
   // Any id of plain characters: a well-formed one is the page, anything else the router's friendly "isn't valid" page.
   /^\/agenpas\/p\/[A-Za-z0-9_-]{1,64}$/,
   /^\/agenpas\/api\/p\/(?:pp|ap|rp)_[0-9a-f]{24}$/,
+  /^\/agenpas\/api\/p\/(?:pp|ap|rp)_[0-9a-f]{24}\/image$/,
   /^\/agenpas\/assets\/app\.(?:js|css)$/,
 ];
 const DEV_PATHS = [/^\/agenpas\/dev\/start$/];

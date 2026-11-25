@@ -37,6 +37,7 @@
 
 const { isAllowedHostedUrl } = require('./hostedUrl');
 const { ACTION_KIND: SHIPPING_STEP, STATE: SHIPPING_STATE, readAddressRequest } = require('./shippingAddress');
+const { productImageUrlFor } = require('./productImage');
 
 const KNOWN_STATES = Object.freeze([
   'routing', 'needs_payment_method', 'locking', 'awaiting_buyer_authorization', 'placing',
@@ -1005,6 +1006,9 @@ function buildView(body, {
   // Only when the backend names a reviewed name of the right shape: otherwise no member at all.
   const agentName = agentDisplayNameFor(src.agent_display_name);
   if (agentName) view.agent_display_name = agentName;
+  // THE PRODUCT IMAGE (productImage.js): only a flag. The page never learns the store's URL; it asks
+  // /agenpas/api/p/:id/image, which fetches the URL the backend names (top level only, never `detail`) server-side.
+  if (productImageUrlFor(src.product_image_url)) view.product_image = true;
   return { view, record, shippingConsentPending: shippingGated };
 }
 

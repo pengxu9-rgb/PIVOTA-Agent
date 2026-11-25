@@ -68,6 +68,7 @@
     lastScreen: null,
     popup: null,
     popupTimer: null,
+    image: { state: 'idle', src: null, slot: null },
     pollTimer: null,
     errors: 0,
     stopped: false,
@@ -197,14 +198,97 @@
     }
 
     var item = el('div', 'hero-item');
-    append(item, el('p', 'hero-item-name product', view.product_name || 'Your item'));
+    var image = productImageSlot(view);
+    if (image) {
+      item.className = 'hero-item hero-item-with-image';
+      item.appendChild(image);
+    }
+    var text = el('div', 'hero-item-text');
+    append(text, el('p', 'hero-item-name product', view.product_name || 'Your item'));
     var meta = [];
     if (view.variant_title) meta.push(view.variant_title);
     if (view.quantity) meta.push('Qty ' + view.quantity);
     if (qty > 1 && unit) meta.push(unit + ' each');
-    if (meta.length) append(item, el('p', 'hero-item-meta', meta.join(' · ')));
+    if (meta.length) append(text, el('p', 'hero-item-meta', meta.join(' · ')));
+    item.appendChild(text);
     card.appendChild(item);
     return card;
+  }
+
+  // ---- the product image -----------------------------------------------------------------------------------------
+  //
+  // Only when the view says `product_image` (the backend named an image of the exact variant bought). The page never
+  // learns the store's URL: it asks /agenpas/api/p/<id>/image, which the gateway answers with the bytes it fetched
+  // itself, and reads them into a data: URL (the CSP allows images from 'self' and data: only; an <img> cannot send
+  // the link token header). Asked ONCE per page load; a failure, a wrong type or a size over the cap shows no image.
+  // Filled IN PLACE when it arrives: never a re-render, which would reload a framed hosted page in embed mode.
+  var IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+  var IMAGE_MAX_BYTES = 2 * 1024 * 1024;
+  var IMAGE_DATA_URL_RE = /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
+
+  function productImageSlot(view) {
+    if (!view.product_image || ui.image.state === 'none') return null;
+    var slot = el('div', 'hero-item-image');
+    ui.image.slot = slot;
+    if (ui.image.state === 'ready') fillImageSlot(slot, ui.image.src);
+    else if (ui.image.state === 'idle') loadProductImage();
+    return slot;
+  }
+
+  function fillImageSlot(slot, src) {
+    var img = document.createElement('img');
+    img.alt = '';  // the item's name is the text beside it
+    img.decoding = 'async';
+    img.onerror = function () {
+      ui.image = { state: 'none', src: null, slot: null };
+      removeImageSlot(slot);
+    };
+    img.src = src;
+    slot.appendChild(img);
+  }
+
+  // The slot goes, and its item is drawn as an item without an image again.
+  function removeImageSlot(slot) {
+    var item = slot && slot.parentNode;
+    if (!item) return;
+    item.className = 'hero-item';
+    item.removeChild(slot);
+  }
+
+  function dropImageSlot() {
+    var slot = ui.image.slot;
+    ui.image = { state: 'none', src: null, slot: null };
+    removeImageSlot(slot);
+  }
+
+  function loadProductImage() {
+    ui.image.state = 'loading';
+    fetch('/agenpas/api/p/' + match[1] + '/image', {
+      method: 'GET',
+      headers: { Accept: IMAGE_TYPES.join(', '), 'X-Agenpas-Link': token },
+      cache: 'no-store',
+      credentials: 'omit',
+      referrerPolicy: 'no-referrer',
+    }).then(function (res) {
+      // The type is checked on the data: URL below (the blob's type IS the answer's Content-Type).
+      if (res.status !== 200) throw new Error('no image');
+      return res.blob();
+    }).then(function (blob) {
+      if (!blob || !blob.size || blob.size > IMAGE_MAX_BYTES) throw new Error('no image');
+      return new Promise(function (resolve, reject) {
+        var reader = new FileReader();
+        reader.onload = function () { resolve(reader.result); };
+        reader.onerror = function () { reject(new Error('no image')); };
+        reader.readAsDataURL(blob);
+      });
+    }).then(function (src) {
+      if (typeof src !== 'string' || !IMAGE_DATA_URL_RE.test(src)) throw new Error('no image');
+      ui.image.state = 'ready';
+      ui.image.src = src;
+      if (ui.image.slot) fillImageSlot(ui.image.slot, src);
+    }).catch(function () {
+      dropImageSlot();
+    });
   }
 
   // The one line under a buyer step (card, address form, confirming the total, approval). Only those call it: a

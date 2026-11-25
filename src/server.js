@@ -39257,6 +39257,9 @@ app.use((req, res, next) => {
 app.use(require('./agenpas/router').createAgenpasRouter({
   reader: buildAgenpasPurchaseReader(logger),
   consentWriter: buildAgenpasConsentWriter(logger),
+  // The product image: fetched server-side from the URL the backend names, public addresses only (DNS pinned), no
+  // redirects (src/agenpas/productImage.js). Never through privateBackendHop: this is a store's host, not ours.
+  imageFetcher: require('./agenpas/productImage').createProductImageFetcher({ fetchImpl: createPublicNetworkFetch() }),
   logger,
 }));
 // …and on the AgenPas host an /agenpas path the router did not serve goes no further.
