@@ -28,6 +28,10 @@ const sandbox = require('../src/config/sandbox');
 const STAND_IN_PROJECT_PARTS = Object.freeze(['zq7stand1n', '900000000001', 'zq7stand2n', '900000000002']);
 test.before(() => sandbox.setRefusedProjectDigestsForTests(STAND_IN_PROJECT_PARTS.map(sandbox.projectPartDigest)));
 test.after(() => sandbox.setRefusedProjectDigestsForTests());
+// STAND-IN prod/staging private IPs, for the same reason (the real ones ship only as digests).
+const STAND_IN_IPS = Object.freeze(['10.250.250.1', '10.250.250.2', '10.250.250.3']);
+test.before(() => sandbox.setRefusedIpDigestsForTests(STAND_IN_IPS.map(sandbox.projectPartDigest)));
+test.after(() => sandbox.setRefusedIpDigestsForTests());
 
 const HEX64 = 'a'.repeat(64);
 const KEY_TEST = `ak_test_${HEX64}`;
@@ -41,12 +45,14 @@ const SAFE_SANDBOX = Object.freeze({
   K_REVISION: 'gateway-00001-abc',
   AGENPAS_RAILS: 'reap',
   AGENPAS_CONSENT_ENABLED: 'true',
-  PIVOTA_API_BASE: 'https://web-sbx0example-uw.a.run.app',
-  AGENT_AUTH_INTROSPECT_URL: 'https://web-sbx0example-uw.a.run.app/agent/internal/auth/introspect',
+  PIVOTA_API_BASE: 'https://web-sbx0exampl-uw.a.run.app',
+  AGENT_AUTH_INTROSPECT_URL: 'https://web-sbx0exampl-uw.a.run.app/agent/internal/auth/introspect',
   CATALOG_IMAGE_CACHE_JOB_RUNNER_ENABLED: 'false',
   PIVOTA_API_KEY: KEY_TEST,
   SKIP_DB_MIGRATIONS: 'true',
   DB_AUTO_MIGRATE: 'false',
+  GOOGLE_CLOUD_PROJECT: 'zz-sandbox-standin',
+  LLM_KILL_SWITCH: 'true',
 });
 
 /** Today's deployed environments plus the local defaults. None names the sandbox. */
@@ -277,10 +283,13 @@ test('boot check: the backend base URL must be set, a URL, and not a prod or sta
   ]) {
     assert.match(refusalOf({ ...SAFE_SANDBOX, PIVOTA_API_BASE: url }) || '', /PIVOTA_API_BASE\(prod or staging host\)/, url);
   }
-  // Hosts that merely resemble prod are not prod.
-  for (const url of ['https://sandbox-api.pivota.cc', 'https://web-sbx0example-uw.a.run.app', 'https://api.pivota.cc.example.org']) {
-    assert.equal(refusalOf({ ...SAFE_SANDBOX, PIVOTA_API_BASE: url }), null, url);
+  // Hosts that merely resemble prod are not prod (with the introspect URL on the same backend).
+  for (const url of ['https://sandbox-api.pivota.cc', 'https://web-sbx0exampl-uw.a.run.app']) {
+    assert.equal(refusalOf({ ...SAFE_SANDBOX, PIVOTA_API_BASE: url, AGENT_AUTH_INTROSPECT_URL: `${url}/agent/internal/auth/introspect` }), null, url);
   }
+  // ...but the ALLOW list refuses a backend that is neither the sandbox's run.app project nor a sandbox host.
+  assert.match(refusalOf({ ...SAFE_SANDBOX, PIVOTA_API_BASE: 'https://api.pivota.cc.example.org', AGENT_AUTH_INTROSPECT_URL: undefined }) || '',
+    /PIVOTA_API_BASE\(must be the sandbox backend: a run\.app host or a sandbox host\)/);
 });
 
 test('boot check: every backend URL setting, and any other setting, naming a prod or staging service is refused', () => {
@@ -667,4 +676,396 @@ test('response marks middleware: header on every path, bodies only on marked pat
     assert.equal(r.headers['x-pivota-env'], undefined, JSON.stringify(env));
     assert.deepEqual(r.body, { error: 'UNAUTHORIZED' }, JSON.stringify(env));
   }
+});
+
+// --------------------------------------------------------------------------------------------------------------
+// 8. Pre-deploy hardening: the ALLOW list, the second sandbox signal, private endpoints, marked paths.
+//
+// The env-gated real-ID test (section 6) runs under `node --test`, e.g.
+//   SANDBOX_REFUSED_PROJECT_PARTS_FOR_TEST=<prod hash>,<prod number>,<staging hash>,<staging number> \
+//     node --test tests/partner_sandbox_config.node.test.cjs
+// Never commit those values.
+// --------------------------------------------------------------------------------------------------------------
+
+test('allow list: every run.app host must be in the sandbox backend\'s own Cloud Run project', () => {
+  // Same project, other services and forms of the same hash: allowed.
+  for (const url of ['https://gateway-sbx0exampl-uw.a.run.app', 'https://tag1---web-sbx0exampl-uw.a.run.app/x']) {
+    assert.equal(refusalOf({ ...SAFE_SANDBOX, SOME_SERVICE_URL: url }), null, url);
+  }
+  // Any other project, listed anywhere or not: refused (a prod project nobody listed is still refused).
+  for (const url of ['https://web-zz9unknown-uw.a.run.app', 'https://web-123456789012.us-west1.run.app', 'https://odd.run.app']) {
+    assert.match(refusalOf({ ...SAFE_SANDBOX, SOME_SERVICE_URL: url }) || '', /SOME_SERVICE_URL\(names a Cloud Run host outside the sandbox project\)/, url);
+  }
+  // A backend on a sandbox custom domain: then no run.app host is allowed at all.
+  const custom = { ...SAFE_SANDBOX, PIVOTA_API_BASE: 'https://sandbox-api.pivota.cc', AGENT_AUTH_INTROSPECT_URL: 'https://sandbox-api.pivota.cc/x' };
+  assert.equal(refusalOf(custom), null);
+  assert.match(refusalOf({ ...custom, SOME_SERVICE_URL: 'https://gateway-sbx0exampl-uw.a.run.app' }) || '', /SOME_SERVICE_URL\(names a Cloud Run host/);
+});
+
+test('allow list: brand-zone hosts must be sandbox hosts; Railway, prod project names and prod IPs are refused', () => {
+  for (const [value, why] of [
+    ['https://gateway.pivota.cc', 'names a non-sandbox pivota.cc host'],
+    ['https://agent.pivota.cc/api/gateway', 'names a non-sandbox pivota.cc host'],
+    ['https://commerce.mcp.pivota.cc/mcp', 'names a non-sandbox pivota.cc host'],
+    ['https://mcp.pivota.cc', 'names a non-sandbox pivota.cc host'],
+    ['https://pivota.cc', 'names a non-sandbox pivota.cc host'],
+    ['https://pay.agenpaz.com', 'names a non-sandbox agenpaz.com host'],
+    ['https://api.reap.global', 'names a non-sandbox reap.global host'],
+    ['https://pivota-agent-production.up.railway.app', 'names a Railway host'],
+    ['redis.railway.internal:6379', 'names a Railway host'],
+    ['pivota-prod:us-west1:pivota-pg', 'names a prod or staging GCP project'],
+    ['projects/pivota-staging/secrets/x', 'names a prod or staging GCP project'],
+    ['10.250.250.1', 'names a prod or staging database/Redis address'],
+    ['redis://10.250.250.2:6379', 'names a prod or staging database/Redis address'],
+  ]) {
+    assert.ok((refusalOf({ ...SAFE_SANDBOX, SOME_SETTING: value }) || '').includes(`SOME_SETTING(${why})`), value);
+  }
+  for (const value of ['https://sandbox.mcp.pivota.cc', 'https://sandbox.agenpaz.com', 'https://sandbox.api.reap.global',
+    'pivota-sandbox', 'pivota-prodx', '10.250.250.10', 'https://sandbox.collect.prava.space', 'https://sandbox-api.pivota.cc']) {
+    assert.equal(refusalOf({ ...SAFE_SANDBOX, SOME_SETTING: value }), null, value);
+  }
+  // The display-only legal-link hosts: allowed in AGENPAS_LEGAL_HOSTS only, and only those two.
+  assert.equal(refusalOf({ ...SAFE_SANDBOX, AGENPAS_LEGAL_HOSTS: 'pivota.cc,merchant.pivota.cc' }), null);
+  assert.match(refusalOf({ ...SAFE_SANDBOX, AGENPAS_LEGAL_HOSTS: 'pivota.cc,agent.pivota.cc' }) || '', /AGENPAS_LEGAL_HOSTS\(names a non-sandbox pivota\.cc host\)/);
+  assert.match(refusalOf({ ...SAFE_SANDBOX, OTHER_LINKS: 'pivota.cc' }) || '', /OTHER_LINKS\(names a non-sandbox/);
+});
+
+test('GOOGLE_CLOUD_PROJECT must be a sandbox-shaped project id (pattern, no environment word)', () => {
+  for (const ok of ['pivota-sandbox', 'zz-sandbox-standin', 'acme-partner-sbx']) {
+    assert.equal(sandbox.sandboxProjectProblem(ok), null, ok);
+    assert.equal(refusalOf({ ...SAFE_SANDBOX, GOOGLE_CLOUD_PROJECT: ok }), null, ok);
+  }
+  for (const [bad, why] of [[undefined, 'must be set'], ['', 'must be set'], ['pivota-prod', 'names another environment'],
+    ['pivota-staging', 'names another environment'], ['pivota-shared', 'names another environment'], ['x-stg-1', 'names another environment'],
+    ['Pivota-Sandbox', 'not a GCP project id'], ['abc', 'not a GCP project id'], ['pivota_sandbox', 'not a GCP project id']]) {
+    const env = { ...SAFE_SANDBOX, GOOGLE_CLOUD_PROJECT: bad };
+    if (bad === undefined) delete env.GOOGLE_CLOUD_PROJECT;
+    assert.ok((refusalOf(env) || '').includes(`GOOGLE_CLOUD_PROJECT(${why})`), String(bad));
+  }
+  // The project-naming settings must name the same project.
+  assert.equal(refusalOf({ ...SAFE_SANDBOX, PRICE_CACHE_FIRESTORE_PROJECT: 'zz-sandbox-standin' }), null);
+  assert.match(refusalOf({ ...SAFE_SANDBOX, PRICE_CACHE_FIRESTORE_PROJECT: 'zz-other-project' }) || '', /PRICE_CACHE_FIRESTORE_PROJECT\(must be the sandbox project\)/);
+  // The Vertex project settings are refused outright now (round 3): see the lexical-only tests.
+});
+
+test('private endpoints: DATABASE_URL / PGHOST / REDIS_* only on a private IP or the sandbox project\'s Cloud SQL socket', () => {
+  const SECRET = 'pwS3cret0value';
+  for (const ok of [`postgresql://u:${SECRET}@10.61.0.5:5432/pivota`, 'postgresql://u@/x?host=/cloudsql/zz-sandbox-standin:us-west1:pg',
+    'postgresql://u@172.20.1.2/x', 'postgresql://u@192.168.4.4/x']) {
+    assert.equal(refusalOf({ ...SAFE_SANDBOX, DATABASE_URL: ok }), null, ok.replace(SECRET, '***'));
+  }
+  for (const [bad, why] of [
+    ['postgresql://u@db.example.com/x', 'not a private address'],
+    ['postgresql://u@34.1.2.3/x', 'not a private address'],
+    ['postgresql://u@/x?host=/cloudsql/zz-other-project:us-west1:pg', 'Cloud SQL socket outside the sandbox project'],
+  ]) {
+    assert.ok((refusalOf({ ...SAFE_SANDBOX, DATABASE_URL: bad }) || '').includes(`DATABASE_URL(${why})`), bad);
+  }
+  assert.match(refusalOf({ ...SAFE_SANDBOX, DATABASE_URL: `postgresql://u:${SECRET}@10.250.250.3/x` }) || '', /DATABASE_URL\(names a prod or staging database\/Redis address\)/);
+  assert.equal((refusalOf({ ...SAFE_SANDBOX, DATABASE_URL: `postgresql://u:${SECRET}@db.example.com/x` }) || '').includes(SECRET), false, 'never the value');
+  assert.match(refusalOf({ ...SAFE_SANDBOX, PGHOST: 'db.example.com' }) || '', /PGHOST\(not a private address\)/);
+  assert.match(refusalOf({ ...SAFE_SANDBOX, REDIS_URL: 'redis://cache.example.com:6379' }) || '', /REDIS_URL\(not a private address\)/);
+  assert.match(refusalOf({ ...SAFE_SANDBOX, REDIS_HOST: 'cache.example.com' }) || '', /REDIS_HOST\(not a private address\)/);
+  assert.equal(refusalOf({ ...SAFE_SANDBOX, REDIS_HOST: '10.61.0.9' }), null);
+});
+
+test('Aurora: its fail-closed switches are refused in the sandbox (the BFF is not loaded there)', () => {
+  for (const key of ['AURORA_ROUTES_FAIL_CLOSED', 'AURORA_BFF_FAIL_CLOSED']) {
+    assert.match(refusalOf({ ...SAFE_SANDBOX, [key]: 'true' }) || '', new RegExp(`${key}\\(the Aurora BFF is not loaded in the sandbox\\)`));
+    assert.equal(refusalOf({ ...SAFE_SANDBOX, [key]: 'false' }), null, key);
+  }
+});
+
+test('marked paths: the MCP doors and invoke routes in every spelling Express routes to them, nothing else', () => {
+  for (const base of sandbox.SANDBOX_MARKED_PATHS) {
+    for (const p of [base, `${base}/`, `${base}//`, base.toUpperCase(), `${base.toUpperCase()}/`]) assert.equal(sandbox.isSandboxMarkedPath(p), true, p);
+  }
+  assert.deepEqual([...sandbox.SANDBOX_MARKED_PATHS].sort(), ['/agent/creator/v1/invoke', '/agent/shop/v1/invoke', '/mcp', '/ucp/mcp']);
+  for (const p of ['/', '/version', '/health', '/mcpx', '/mcp/extra', '/ucp', '/agent/shop/v1', '/agent/shop/v1/invokes', '', null]) {
+    assert.equal(sandbox.isSandboxMarkedPath(p), false, String(p));
+  }
+});
+
+// --------------------------------------------------------------------------------------------------------------
+// 9. Review round 2: IP digests, every DB host, strict socket paths, whole sandbox labels.
+// --------------------------------------------------------------------------------------------------------------
+
+test('IP digests: known answer pins the scheme; three distinct shipped digests; stand-ins are not among them', () => {
+  assert.equal(sandbox.projectPartDigest('10.250.250.1'), '8bfbb316913fa42a4e6d52b91ae5c13dc01290c83d25da4303ee2f8180b17538');
+  const shipped = sandbox.SHIPPED_REFUSED_IP_DIGESTS;
+  assert.equal(shipped.length, 3);
+  assert.equal(new Set(shipped).size, 3);
+  for (const d of shipped) assert.match(d, /^[0-9a-f]{64}$/);
+  for (const ip of STAND_IN_IPS) assert.equal(shipped.includes(sandbox.projectPartDigest(ip)), false, ip);
+  withProcessEnv({ NODE_ENV: undefined, NODE_TEST_CONTEXT: undefined, JEST_WORKER_ID: undefined }, () => {
+    assert.throws(() => sandbox.setRefusedIpDigestsForTests([]), /test-only/);
+  });
+});
+
+test('IP digests match the REAL prod/staging IPs (only when given locally; never commit them)', (t) => {
+  const raw = String(process.env.SANDBOX_REFUSED_IPS_FOR_TEST || '').trim();
+  if (!raw) {
+    t.skip('SANDBOX_REFUSED_IPS_FOR_TEST not set: prod SQL, prod Redis, staging SQL');
+    return;
+  }
+  const ips = raw.split(',').map((x) => x.trim());
+  assert.deepEqual(ips.map(sandbox.projectPartDigest), [...sandbox.SHIPPED_REFUSED_IP_DIGESTS]);
+  sandbox.setRefusedIpDigestsForTests();
+  try {
+    for (const ip of ips) {
+      assert.match(refusalOf({ ...SAFE_SANDBOX, DATABASE_URL: `postgresql://u@${ip}:5432/x` }) || '', /DATABASE_URL\(names a prod or staging database\/Redis address\)/);
+      assert.match(refusalOf({ ...SAFE_SANDBOX, REDIS_HOST: ip }) || '', /REDIS_HOST\(names a prod or staging database\/Redis address\)/);
+    }
+  } finally {
+    sandbox.setRefusedIpDigestsForTests(STAND_IN_IPS.map(sandbox.projectPartDigest));
+  }
+});
+
+test('DB URL: every host it could connect to is checked (duplicate host= and the standard socket form)', () => {
+  // pg-connection-string takes the LAST host=, libpq another: all of them must be private.
+  assert.match(refusalOf({ ...SAFE_SANDBOX, DATABASE_URL: 'postgresql://u:p@10.9.0.5/db?host=10.9.0.5&host=34.1.2.3' }) || '', /DATABASE_URL\(not a private address\)/);
+  assert.match(refusalOf({ ...SAFE_SANDBOX, DATABASE_URL: 'postgresql://u:p@34.1.2.3/db?host=10.9.0.5' }) || '', /DATABASE_URL\(not a private address\)/);
+  // A bad host in the MIDDLE of three host= values: neither the first nor pg-connection-string's last is it.
+  assert.match(refusalOf({ ...SAFE_SANDBOX, DATABASE_URL: 'postgresql://u:p@10.9.0.5/db?host=10.9.0.5&host=34.1.2.3&host=10.9.0.6' }) || '', /DATABASE_URL\(not a private address\)/);
+  // The socket: form: only pg-connection-string resolves its host (the WHATWG URL has none).
+  assert.equal(refusalOf({ ...SAFE_SANDBOX, DATABASE_URL: 'socket:/cloudsql/zz-sandbox-standin:us-west1:pg?db=x' }), null);
+  assert.match(refusalOf({ ...SAFE_SANDBOX, DATABASE_URL: 'socket:/cloudsql/zz-other-project:us-west1:pg?db=x' }) || '', /DATABASE_URL\(Cloud SQL socket outside the sandbox project\)/);
+  // The standard Cloud SQL socket form has no authority host.
+  assert.equal(refusalOf({ ...SAFE_SANDBOX, DATABASE_URL: 'postgresql://u:p@/db?host=/cloudsql/zz-sandbox-standin:us-west1:pg' }), null);
+  // Strict socket path: exactly /cloudsql/<project>:<region>:<instance>.
+  for (const bad of ['/cloudsql/zz-sandbox-standin:us-west1:pg/../../x', '/cloudsql/zz-sandbox-standin:us-west1', '/tmp/x', '/cloudsql/zz-sandbox-standin:a:b:c']) {
+    assert.match(refusalOf({ ...SAFE_SANDBOX, DATABASE_URL: `postgresql://u@/db?host=${bad}` }) || '', /DATABASE_URL\(not a Cloud SQL socket path\)/, bad);
+  }
+  assert.match(refusalOf({ ...SAFE_SANDBOX, PGHOST: '/cloudsql/zz-other-project:us-west1:pg' }) || '', /PGHOST\(Cloud SQL socket outside the sandbox project\)/);
+  assert.match(refusalOf({ ...SAFE_SANDBOX, DATABASE_URL: 'not a url' }) || '', /DATABASE_URL\(not a parsable URL\)/);
+  assert.match(refusalOf({ ...SAFE_SANDBOX, DATABASE_URL: 'postgresql:///db' }) || '', /DATABASE_URL\((no host|not a private address)\)/);
+  // An authority host beside a socket host=: both are checked (the authority one is not private here).
+  assert.match(refusalOf({ ...SAFE_SANDBOX, DATABASE_URL: 'postgresql://u@localhost/x?host=/cloudsql/zz-sandbox-standin:us-west1:pg' }) || '', /DATABASE_URL\(not a private address\)/);
+  assert.match(refusalOf({ ...SAFE_SANDBOX, DATABASE_URL: 'postgresql://u:p@/db?host=10.9.0.5&host=34.1.2.3' }) || '', /DATABASE_URL\(not a private address\)/);
+  // PRIVATE_IP_RE is anchored: a hostname that merely starts like a private IP is not one.
+  for (const bad of ['10.1.2.3.example.com', '10.1.2.3x', '192.168.1.1.nip.io']) {
+    assert.match(refusalOf({ ...SAFE_SANDBOX, PGHOST: bad }) || '', /PGHOST\(not a (private|canonical IP) address\)/, bad);
+  }
+});
+
+test('brand zones: the sandbox label must be a whole label (sandbox or sandbox-...), never a substring', () => {
+  for (const ok of ['https://sandbox.mcp.pivota.cc', 'https://sandbox-api.pivota.cc', 'https://a.sandbox.agenpaz.com']) {
+    assert.equal(refusalOf({ ...SAFE_SANDBOX, SOME_SETTING: ok }), null, ok);
+  }
+  for (const bad of ['https://nosandbox.pivota.cc', 'https://pay-sandbox.agenpaz.com', 'https://sandboxed.pivota.cc', 'https://xsandbox-api.pivota.cc']) {
+    assert.match(refusalOf({ ...SAFE_SANDBOX, SOME_SETTING: bad }) || '', /SOME_SETTING\(names a non-sandbox /, bad);
+  }
+});
+
+test('lexical-only: Vertex is refused in any truthy spelling, and the LLM kill switch must be exactly true', () => {
+  const { vertexEnabled } = require('../src/llm/vertexGemini');
+  for (const v of ['true', 'TRUE', ' true ', '1', 'yes', 'on', 'Y']) {
+    assert.match(refusalOf({ ...SAFE_SANDBOX, VERTEX_AI_ENABLED: v }) || '', /VERTEX_AI_ENABLED\(must be off in the sandbox\)/, v);
+  }
+  for (const v of [undefined, '', 'false', '0', 'off']) {
+    const env = { ...SAFE_SANDBOX, VERTEX_AI_ENABLED: v };
+    if (v === undefined) delete env.VERTEX_AI_ENABLED;
+    assert.equal(refusalOf(env), null, String(v));
+  }
+  // Every value the REAL reader calls enabled is refused.
+  for (const v of ['true', 'TRUE', ' True ', '1', 'yes']) {
+    const on = withProcessEnv({ VERTEX_AI_ENABLED: v }, () => vertexEnabled());
+    if (on) assert.ok(refusalOf({ ...SAFE_SANDBOX, VERTEX_AI_ENABLED: v }), v);
+  }
+  for (const v of [undefined, '', 'false', 'TRUE', ' true', '1', 'yes']) {
+    const env = { ...SAFE_SANDBOX, LLM_KILL_SWITCH: v };
+    if (v === undefined) delete env.LLM_KILL_SWITCH;
+    assert.match(refusalOf(env) || '', /LLM_KILL_SWITCH\(must be exactly true in the sandbox\)/, String(v));
+  }
+  // Outside the sandbox neither flag matters to the check.
+  for (const [name, env] of Object.entries(NON_SANDBOX_ENVS)) {
+    assert.deepEqual(sandbox.sandboxConfigProblems({ ...env, VERTEX_AI_ENABLED: 'true' }), [], name);
+  }
+});
+
+test('lexical-only (hard): no LLM provider key may be present in the sandbox, not even empty', () => {
+  const KEYS = ['GEMINI_API_KEY', 'PIVOTA_GEMINI_API_KEY', 'FALLBACK_GEMINI_API_KEY', 'GOOGLE_API_KEY', 'OPENAI_API_KEY',
+    'ANTHROPIC_API_KEY', 'LLM_API_KEY', 'AURORA_DIAG_GEMINI_API_KEY', 'AURORA_RECO_GEMINI_API_KEY', 'AURORA_SKIN_GEMINI_API_KEY',
+    'AURORA_TRAVEL_GEMINI_API_KEY', 'AURORA_VISION_GEMINI_API_KEY', 'OPENROUTER_API_KEY', 'SOME_NEW_CLAUDE_TOKEN'];
+  for (const key of KEYS) {
+    for (const value of ['x', '']) {
+      assert.ok((refusalOf({ ...SAFE_SANDBOX, [key]: value }) || '').includes(`${key}(no LLM key may be set in the sandbox)`), `${key}=${JSON.stringify(value)}`);
+    }
+  }
+  for (const key of ['LLM_KILL_SWITCH', 'GEMINI_JSON_TIMEOUT', 'FIND_PRODUCTS_MULTI_INTENT_LLM_GEMINI_MAX_OUTPUT_TOKENS', 'PIVOTA_INTENT_LLM_ENABLED', 'GOOGLE_CLOUD_PROJECT']) {
+    assert.equal(sandbox.LLM_KEY_SETTING_RE.test(key), false, key);
+  }
+  for (const [name, env] of Object.entries(NON_SANDBOX_ENVS)) {
+    assert.deepEqual(sandbox.sandboxConfigProblems({ ...env, GEMINI_API_KEY: 'x', OPENAI_API_KEY: 'y' }), [], name);
+  }
+});
+
+test('lexical-only (hard): every provider key name src/ reads is caught by the pattern (a new one cannot slip past)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const root = path.resolve(__dirname, '..');
+  const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
+    const p = path.join(dir, d.name);
+    if (d.isDirectory()) return d.name === 'node_modules' ? [] : walk(p);
+    return /\.(c|m)?js$/.test(d.name) ? [p] : [];
+  });
+  const names = new Set();
+  for (const f of [...walk(path.join(root, 'src')), ...walk(path.join(root, 'mcp-server', 'src'))]) {
+    for (const m of fs.readFileSync(f, 'utf8').matchAll(/\b([A-Z0-9_]*(?:GEMINI|OPENAI|ANTHROPIC|CLAUDE)[A-Z0-9_]*_(?:API_KEY|KEY|TOKEN|SECRET))\b/g)) names.add(m[1]);
+  }
+  names.delete('MISSING_GEMINI_KEY'); // an error code string, not a setting
+  for (const must of ['GEMINI_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'PIVOTA_GEMINI_API_KEY']) assert.ok(names.has(must), `the scan should see ${must}`);
+  for (const n of names) assert.equal(sandbox.LLM_KEY_SETTING_RE.test(n), true, n);
+});
+
+// --------------------------------------------------------------------------------------------------------------
+// 10. Review round 3: canonical IPs, ioredis hosts, every DB/Redis setting, Vertex paths, LLM key names, decoded hosts.
+// --------------------------------------------------------------------------------------------------------------
+
+test('IPs: every libc spelling of a refused IP is refused (zero-padded, octal, hex, short forms)', () => {
+  // The stand-in refused IPs are 10.250.250.1/2/3 (see STAND_IN_IPS).
+  for (const spelled of ['10.250.250.01', '012.0372.0372.1', '0x0a.250.250.1', '10.250.0xfa.1', '10.16448001']) {
+    assert.equal(sandbox.canonicalIpv4(spelled), '10.250.250.1', spelled);
+    assert.match(refusalOf({ ...SAFE_SANDBOX, SOME_SETTING: `host=${spelled}` }) || '', /SOME_SETTING\(names a prod or staging database\/Redis address\)/, spelled);
+  }
+  // Database / Redis endpoints accept only a canonical dotted quad.
+  for (const bad of ['10.9.0.05', '010.9.0.5', '0x0a.9.0.5', '10.9.5', '167772162']) {
+    assert.match(refusalOf({ ...SAFE_SANDBOX, PGHOST: bad }) || '', /PGHOST\(not a canonical IP address\)/, bad);
+    assert.match(refusalOf({ ...SAFE_SANDBOX, DATABASE_URL: `postgresql://u@${bad}:5432/x` }) || '', /DATABASE_URL\(not a canonical IP address\)/, bad);
+  }
+  assert.equal(sandbox.canonicalIpv4('1.2.3'), '1.2.0.3');
+  for (const notIp of ['08.1.1.1', '999.1.1.1', '10.1.2.3x', 'abc', '']) assert.equal(sandbox.canonicalIpv4(notIp), null, notIp);
+  // PRIVATE_IP_RE is anchored at the start too.
+  assert.match(refusalOf({ ...SAFE_SANDBOX, PGHOST: '110.1.2.3' }) || '', /PGHOST\(not a private address\)/);
+  assert.match(refusalOf({ ...SAFE_SANDBOX, PGHOST: '210.1.2.3' }) || '', /PGHOST\(not a private address\)/);
+});
+
+test('Redis: the host ioredis connects to is checked (userinfo tricks), for every Redis setting', () => {
+  assert.match(refusalOf({ ...SAFE_SANDBOX, REDIS_URL: 'redis://34.1.2.3\\@10.9.0.5:6379' }) || '', /REDIS_URL\(not a private address\)/);
+  assert.equal(refusalOf({ ...SAFE_SANDBOX, REDIS_URL: 'redis://10.9.0.5:6379/0' }), null);
+  assert.match(refusalOf({ ...SAFE_SANDBOX, REDIS_CACHE_URL: 'redis://cache.example.com:6379' }) || '', /REDIS_CACHE_URL\(not a private address\)/);
+  assert.match(refusalOf({ ...SAFE_SANDBOX, REDIS_CACHE_HOST: 'cache.example.com' }) || '', /REDIS_CACHE_HOST\(not a private address\)/);
+});
+
+test('every *DATABASE_URL setting is a private endpoint (each opens its own Pool)', () => {
+  for (const key of ['PCI_KB_DATABASE_URL', 'INGREDIENT_SIGNAL_DATABASE_URL', 'INGREDIENT_REFERENCE_DATABASE_URL', 'PIVOTA_KB_DATABASE_URL']) {
+    assert.match(refusalOf({ ...SAFE_SANDBOX, [key]: 'postgresql://u@db.example.com/x' }) || '', new RegExp(`${key}\\(not a private address\\)`), key);
+    assert.equal(refusalOf({ ...SAFE_SANDBOX, [key]: 'postgresql://u@10.61.0.7/x' }), null, key);
+  }
+  // The hand fallback (non-WHATWG URL) still reads every host=.
+  assert.match(refusalOf({ ...SAFE_SANDBOX, DATABASE_URL: 'postgresql://u:p@/db?host=/cloudsql/zz-sandbox-standin:us-west1:pg&host=34.1.2.3' }) || '', /DATABASE_URL\(not a private address\)/);
+  // ...including a bad host in the MIDDLE (pg-connection-string takes the last, which is fine here).
+  assert.match(refusalOf({ ...SAFE_SANDBOX, DATABASE_URL: 'postgresql://u:p@/db?host=/cloudsql/zz-sandbox-standin:us-west1:pg&host=34.1.2.3&host=/cloudsql/zz-sandbox-standin:us-west1:pg' }) || '', /DATABASE_URL\(not a private address\)/);
+});
+
+test('lexical-only: any Vertex project / region setting is refused when present, whatever its value', () => {
+  for (const key of ['PIVOTA_AGENT_CENTER_GEMINI_VERTEX_PROJECT', 'MERCHANT_AUDIT_GEMINI_VERTEX_PROJECT', 'ANTHROPIC_VERTEX_REGION',
+    'PIVOTA_AGENT_CENTER_ANTHROPIC_VERTEX_REGION', 'SOME_VERTEX_LOCATION']) {
+    for (const value of ['zz-sandbox-standin', '']) {
+      assert.ok((refusalOf({ ...SAFE_SANDBOX, [key]: value }) || '').includes(`${key}(no Vertex path may be configured in the sandbox)`), `${key}=${JSON.stringify(value)}`);
+    }
+  }
+  assert.equal(sandbox.VERTEX_PATH_SETTING_RE.test('VERTEX_AI_ENABLED'), false);
+  assert.equal(sandbox.VERTEX_PATH_SETTING_RE.test('GOOGLE_CLOUD_LOCATION'), false);
+});
+
+test('lexical-only: the LLM key pattern refuses a fixed list of names and none of the non-credentials', () => {
+  const MUST_REFUSE = ['GEMINI_API_KEY', 'GEMINI_API_KEY_2', 'OPENAI_API_KEY', 'OPENAI_APIKEY', 'AZURE_OPENAI_API_KEY', 'ANTHROPIC_API_KEY',
+    'CLAUDE_API_KEY', 'LLM_API_KEY', 'GENAI_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY', 'GOOGLE_API_KEY', 'GOOGLE_APIKEY',
+    'OPENROUTER_API_KEY', 'DASHSCOPE_API_KEY', 'QWEN_API_KEY', 'DEEPSEEK_API_KEY', 'MOONSHOT_API_KEY', 'ZHIPU_API_KEY',
+    'MINIMAX_API_KEY', 'MISTRAL_API_KEY', 'COHERE_API_KEY', 'GROQ_API_KEY', 'PERPLEXITY_API_KEY', 'XAI_API_KEY',
+    'TOGETHER_API_KEY', 'FIREWORKS_API_KEY', 'REPLICATE_API_TOKEN', 'HUGGINGFACE_TOKEN', 'BEDROCK_ACCESS_KEY',
+    'PIVOTA_GEMINI_API_KEY', 'AURORA_SKIN_GEMINI_API_KEY', 'FALLBACK_GEMINI_API_KEY', 'OPENAI_SECRET',
+    'GEMINI_KEY', 'OPENAI_KEY', 'GEMINI_API_KEYS', 'ANTHROPIC_KEYS', 'VERTEX_API_KEY', 'KIMI_API_KEY', 'VOYAGE_API_KEY', 'JINA_API_KEY'];
+  for (const key of MUST_REFUSE) {
+    assert.equal(sandbox.LLM_KEY_SETTING_RE.test(key), true, key);
+    assert.ok((refusalOf({ ...SAFE_SANDBOX, [key]: '' }) || '').includes(`${key}(no LLM key may be set in the sandbox)`), key);
+  }
+  for (const key of ['LLM_KILL_SWITCH', 'GEMINI_JSON_TIMEOUT', 'FIND_PRODUCTS_MULTI_INTENT_LLM_GEMINI_MAX_OUTPUT_TOKENS',
+    'PIVOTA_INTENT_LLM_ENABLED', 'LLM_TOKEN_BUDGET', 'GOOGLE_CLOUD_PROJECT', 'VERTEX_AI_ENABLED', 'OPENAI_PRICE_PER_1K_TOKENS',
+    'AURORA_EVAL_JUDGE_GEMINI_MAX_OUTPUT_TOKENS', 'GEMINI_PRICE_PER_1K_TOKENS']) {
+    assert.equal(sandbox.LLM_KEY_SETTING_RE.test(key), false, key);
+  }
+});
+
+test('hosts are checked as fetch decodes them: percent-encoded dots do not hide a prod host', () => {
+  for (const value of ['https://api%2Epivota%2Ecc/agent/internal/auth/introspect', 'https://gateway%2epivota%2ecc', 'api%2Epivota%2Ecc']) {
+    assert.match(refusalOf({ ...SAFE_SANDBOX, AGENT_AUTH_INTROSPECT_URL: value }) || '', /AGENT_AUTH_INTROSPECT_URL\((prod or staging host|names a non-sandbox pivota\.cc host)\)/, value);
+  }
+  assert.match(refusalOf({ ...SAFE_SANDBOX, SOME_URL: 'https://web-zq7stand1n-uw%2Ea%2Erun%2Eapp' }) || '', /SOME_URL\(prod or staging host\)/);
+  assert.equal(refusalOf({ ...SAFE_SANDBOX, SOME_URL: 'https://sandbox%2Emcp%2Epivota%2Ecc' }), null);
+  // Only the URL parser normalises IDNA dots (U+3002, U+FF0E): the raw and decoded tokens never see these hosts.
+  assert.match(refusalOf({ ...SAFE_SANDBOX, SOME_URL: 'https://api\u3002pivota\u3002cc/x' }) || '', /SOME_URL\((prod or staging host|names a non-sandbox pivota\.cc host)\)/);
+  assert.match(refusalOf({ ...SAFE_SANDBOX, SOME_URL: 'https://web-zq7stand1n-uw\uFF0Ea\uFF0Erun\uFF0Eapp' }) || '', /SOME_URL\(prod or staging host\)/);
+});
+
+// --------------------------------------------------------------------------------------------------------------
+// 11. The repo never names a refused private IP, in ANY spelling libc would read (the canonical-form scrub).
+// --------------------------------------------------------------------------------------------------------------
+
+
+/** The scrub's one reading of escaped dots: any run of backslashes before a dot is a dot (`10\.x` in a regex
+ *  literal, `'10\\.x'` in a string). Shared by the scrub and the test of its forms. */
+const unescapeDots = (text) => text.replace(/\\+\./g, '.');
+
+test('repo scrub: no tracked file names a refused prod/staging private IP, in any spelling (canonical-form scan)', { timeout: 180000 }, () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const root = path.resolve(__dirname, '..');
+  // EVERY tracked file (the Dockerfile's `COPY . .` ships the whole repo), not a directory list. No git, no pass.
+  const listed = require('node:child_process').execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8', maxBuffer: 1 << 28 })
+    .split('\0').filter(Boolean);
+  assert.ok(listed.length > 2000, `git ls-files listed only ${listed.length} files`);
+  const shipped = new Set(sandbox.SHIPPED_REFUSED_IP_DIGESTS);
+  const seen = new Map();
+  const hits = new Set();
+  let textFiles = 0;
+  const read = new Set();
+  for (const rel of listed) {
+    const buf = fs.readFileSync(path.join(root, rel)); // a missing tracked file throws: never a silent skip
+    if (buf.subarray(0, 8192).includes(0)) continue; // binary
+    textFiles += 1;
+    read.add(rel);
+    // `10\.x\.y\.z` (a regex literal) and `'10\\.x...'` (one inside a string) are the same address: any run of
+    // backslashes before a dot reads as a dot.
+    const text = unescapeDots(buf.toString('utf8').toLowerCase());
+    for (const m of text.matchAll(/(?<![0-9a-z.])(?:0x[0-9a-f]+|[0-9]+)(?:\.(?:0x[0-9a-f]+|[0-9]+)){0,3}(?![0-9a-z])/g)) {
+      const c = sandbox.canonicalIpv4(m[0], { bare: true });
+      if (!c || !/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(c)) continue;
+      if (!seen.has(c)) seen.set(c, shipped.has(sandbox.projectPartDigest(c)));
+      if (seen.get(c)) hits.add(rel); // the path only, never the value
+    }
+  }
+  assert.ok(textFiles > 2000, `only ${textFiles} text files read`);
+  // The scope is the whole tree, root and dot-directories included (the image ships them all).
+  for (const must of ['Dockerfile', 'Makefile', 'package.json', '.github/workflows/README-relationship-graph.md', 'scripts/run-relgraph-health-job.js']) {
+    assert.ok(read.has(must), `the scrub did not read ${must}`);
+  }
+  assert.deepEqual([...hits], [], `files naming a refused IP: ${[...hits].join(', ')}`);
+});
+
+test('repo scrub reads the forms a planted IP could take (stand-in IPs, through the same readers)', () => {
+  // Bare mode reads 1-part decimal and hex; the escaped-dot regex form reads as dots.
+  assert.equal(sandbox.canonicalIpv4('184220161', { bare: true }), '10.250.250.1');
+  assert.equal(sandbox.canonicalIpv4('0xafafa01', { bare: true }), '10.250.250.1');
+  assert.equal(sandbox.canonicalIpv4('10.16448001', { bare: true }), '10.250.250.1');
+  assert.equal(sandbox.canonicalIpv4('184220161'), null, 'not read as an address in the default mode');
+  for (const escaped of ['10\\.250\\.250\\.1', '10\\\\.250\\\\.250\\\\.1']) assert.equal(unescapeDots(escaped), '10.250.250.1', escaped);
+  for (const spelled of ['184220161', '0xafafa01', '10.16448001', '10.250.250.01', '012.0372.0372.1']) {
+    assert.equal(sandbox.isRefusedIp(spelled), true, spelled);
+  }
+  for (const notOne of ['5432', '1795614420', '10.250.250.10']) assert.equal(sandbox.isRefusedIp(notOne), false, notOne);
+  // ...and the boot check refuses a bare-number spelling in any setting.
+  assert.match(refusalOf({ ...SAFE_SANDBOX, SOME_SETTING: '184220161' }) || '', /SOME_SETTING\(names a prod or staging database\/Redis address\)/);
+});
+
+test('embedded URLs are decoded on their own: JSON arrays, url=..., a malformed % elsewhere', () => {
+  for (const value of ['["https://api。pivota。cc/x"]', 'url=https://api。pivota。cc', '["https://api%2Epivota%2Ecc/x?q=100%"]',
+    'a=1&u=https%3A%2F%2Fapi%252Epivota%252Ecc%2Fx', '{"u":"https://web-zq7stand1n-uw．a．run．app"}']) {
+    assert.ok(refusalOf({ ...SAFE_SANDBOX, SOME_SETTING: value }), value);
+  }
+  assert.equal(refusalOf({ ...SAFE_SANDBOX, SOME_SETTING: '["https://sandbox.mcp.pivota.cc/x?q=100%"]' }), null);
+  // Not a URL at all: only the tolerant, repeated decode sees these hosts.
+  assert.match(refusalOf({ ...SAFE_SANDBOX, SOME_SETTING: 'host=api%2Epivota%2Ecc&q=100%' }) || '', /SOME_SETTING\(/);
+  assert.match(refusalOf({ ...SAFE_SANDBOX, SOME_SETTING: 'host=api%252Epivota%252Ecc' }) || '', /SOME_SETTING\(/);
 });

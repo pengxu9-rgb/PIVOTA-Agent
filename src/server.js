@@ -609,7 +609,15 @@ const isAuroraDegradedPath = (pathname) => {
     prefix.endsWith('/') ? path.startsWith(prefix) : path === prefix || path.startsWith(`${prefix}/`),
   );
 };
+// PARTNER SANDBOX: the Aurora BFF (the consumer chat app) is not loaded. Its module starts lanes that fetch from prod
+// hosts by default (the reco-alternatives authority backfill, the URL unblocker, the dupe KB backfill), and nothing in
+// the partner journey needs it; recommend_products answers its empty, reasoned result without it.
 try {
+  if (require('./config/platform').isSandbox()) {
+    const skipped = new Error('the Aurora BFF is not loaded in the partner sandbox');
+    skipped.code = 'AURORA_SKIPPED_IN_SANDBOX';
+    throw skipped;
+  }
   const auroraRoutes = require('./auroraBff/routes');
   mountAuroraBffRoutes =
     typeof auroraRoutes?.mountAuroraBffRoutes === 'function'
@@ -626,15 +634,21 @@ try {
   auroraRoutesReady = true;
 } catch (err) {
   auroraRoutesReady = false;
-  auroraRoutesLoadError = String(err?.stack || err?.message || err || 'unknown_error').slice(0, 1200);
-  logger.error(
-    {
-      err: err?.message || String(err),
-      fail_closed: AURORA_ROUTES_FAIL_CLOSED,
-      aurora_routes_ready: false,
-    },
-    'auroraBff routes failed to load; disabling aurora routes for this process',
-  );
+  if (err?.code === 'AURORA_SKIPPED_IN_SANDBOX') {
+    // Expected in the partner sandbox, not a failure: no stack, info level.
+    auroraRoutesLoadError = 'AURORA_SKIPPED_IN_SANDBOX';
+    logger.info({ event: 'aurora_skipped_in_sandbox', code: 'AURORA_SKIPPED_IN_SANDBOX' }, 'auroraBff routes not loaded in the partner sandbox');
+  } else {
+    auroraRoutesLoadError = String(err?.stack || err?.message || err || 'unknown_error').slice(0, 1200);
+    logger.error(
+      {
+        err: err?.message || String(err),
+        fail_closed: AURORA_ROUTES_FAIL_CLOSED,
+        aurora_routes_ready: false,
+      },
+      'auroraBff routes failed to load; disabling aurora routes for this process',
+    );
+  }
 }
 const { applyGatewayGuardrails, clientIpFromRequest } = require('./guardrails/gatewayGuardrails');
 const {
@@ -31021,10 +31035,7 @@ const app = express();
 // PARTNER SANDBOX marks (src/config/sandbox.js sandboxResponseMarks): a no-op outside PIVOTA_ENV=sandbox. In the
 // sandbox, X-Pivota-Env: sandbox on every response, and every JSON body on the MCP doors and the REST invoke route
 // marked sandbox. Mounted first so no handler's response escapes it.
-app.use(require('./config/sandbox').sandboxResponseMarks((req) => {
-  const p = String(req?.path || '').toLowerCase().replace(/\/+$/, '');
-  return p === '/mcp' || p === '/ucp/mcp' || p === '/agent/shop/v1/invoke' || p === '/agent/creator/v1/invoke';
-}));
+app.use(require('./config/sandbox').sandboxResponseMarks((req) => require('./config/sandbox').isSandboxMarkedPath(req?.path)));
 
 async function fetchBackendAdmin({ method, path, params, data }) {
   if (!ADMIN_API_KEY) {

@@ -9,7 +9,13 @@
  *      environment keeps today's pattern exactly (and so keeps refusing `ak_test_`). `agentApiKeyFormatOk` is the one
  *      format check; src/server.js (invoke auth) and src/commerceMcpOAuth.js (api-key vs OAuth routing) both use it.
  *   2. BOOT CHECK. `assertSandboxConfig` refuses to start a sandbox revision whose settings could reach real money,
- *      prod, or a store's site, or let the server run its own DB migrations. It names each offending SETTING and never prints a value. Outside the sandbox it is
+ *      prod, or a store's site, or let the server run its own DB migrations. Two layers: a DENY list (prod and staging
+ *      backends and Cloud Run projects, by digest) and an ALLOW list (every run.app host in the sandbox backend's own
+ *      project; brand-zone hosts sandbox-labelled; database and Redis private; GOOGLE_CLOUD_PROJECT a sandbox-shaped
+ *      project id). Outside run.app and the brand zones it is still a deny list (IPv6 or public IPs, other clouds' hosts,
+ *      percent-encoded dots are not refused). The real second sandbox signal is the deploy's own read-back (sandbox
+ *      infra), not GOOGLE_CLOUD_PROJECT: a copied PIVOTA_ENV=production skips this check entirely. The Aurora BFF is not loaded in the sandbox at all (src/server.js), which also keeps out its first-use DDL
+ *      (recoRecallPoolCache, recoLabelSuggestionStore) and its prod-defaulting backfills. It names each offending SETTING and never prints a value. Outside the sandbox it is
  *      a no-op.
  *   3. DECISION 4. Copied catalog prices are fresh in the sandbox (`copiedPricesAreFresh`), and every MCP tool
  *      answer carries `sandbox: true` (`markSandboxToolValue` / `markSandboxToolResult`, applied once, in
@@ -121,9 +127,287 @@ function hostTokens(value) {
   return String(value || '').toLowerCase().match(/[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?/g) || [];
 }
 
-function valueNamesRefusedHost(value) {
-  return hostTokens(value).some(isRefusedHost);
+/** Every host candidate in a value: its raw tokens, the tokens of its percent-decoded form, and the hostname of each
+ *  URL in it as `new URL()` decodes it (https://api%2Epivota%2Ecc is api.pivota.cc to fetch, so it is here too). */
+function candidateHosts(value) {
+  const raw = String(value || '');
+  const out = new Set(hostTokens(raw));
+  const forms = [raw];
+  // Decode by HAND, escape by escape, up to three times (%252E -> %2E -> .): one malformed `%` elsewhere in the value
+  // (decodeURIComponent throws on it) must not leave the rest undecoded.
+  let cur = raw;
+  for (let i = 0; i < 3; i += 1) {
+    const next = cur.replace(/%([0-9a-f]{2})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+    if (next === cur) break;
+    forms.push(next);
+    cur = next;
+  }
+  for (const form of forms) {
+    for (const t of hostTokens(form)) out.add(t);
+    // Every URL-shaped substring, wherever it sits (a JSON array, `url=...`), parsed on its own as fetch would: the
+    // URL parser also normalises IDNA dots (U+3002, U+FF0E) that the ASCII tokens never see.
+    for (const m of form.matchAll(/[a-z][a-z0-9+.-]*:\/\/[^\s"'<>,;\]\)\\`]+/gi)) {
+      try {
+        const h = new URL(m[0]).hostname.toLowerCase();
+        if (h) out.add(h.replace(/^\[|\]$/g, ''));
+      } catch {
+        // not a URL: its tokens above are what counts
+      }
+    }
+  }
+  return [...out];
 }
+
+function valueNamesRefusedHost(value) {
+  return candidateHosts(value).some(isRefusedHost);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The ALLOW-LIST rules (pre-deploy hardening). The deny list above names what a sandbox must never call; these say
+// what it MAY call, so a prod host nobody thought to list is still refused.
+//   - Cloud Run: every *.run.app host in any setting must be in the SAME project as PIVOTA_API_BASE (the sandbox's
+//     own backend), by the project part of its name. If PIVOTA_API_BASE is not a run.app host, no run.app host is
+//     allowed at all.
+//   - Brand zones: a host under pivota.cc, agenpaz.com, agenpas.com or reap.global must have a label containing
+//     "sandbox" (sandbox.mcp.pivota.cc, sandbox.agenpaz.com, sandbox.api.reap.global). The same rule the sandbox
+//     backend applies (pivota-backend config/sandbox_guard.py).
+//   - No Railway host, no prod or staging GCP project name, no prod or staging database / Redis private IP.
+//   - The database and Redis are private: a private IP that is not prod's or staging's, or a Cloud SQL socket in
+//     the sandbox's own project (GOOGLE_CLOUD_PROJECT).
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The project part of a Cloud Run host: the URL hash of `<svc>-<hash>-<region>.a.run.app`, the number of
+ *  `<svc>-<number>.<region>.run.app` (revision tags `<tag>---` included), or null when the host is neither. */
+function runAppProjectPart(host) {
+  const h = String(host || '').toLowerCase().replace(/\.+$/, '');
+  const hashForm = /^(?:[a-z0-9-]+-)?([a-z0-9]{10})-[a-z0-9]+\.a\.run\.app$/.exec(h);
+  if (hashForm) return hashForm[1];
+  const numberForm = /^(?:[a-z0-9-]+-)?(\d{6,})\.[a-z0-9-]+\.run\.app$/.exec(h);
+  return numberForm ? numberForm[1] : null;
+}
+
+const GUARDED_ZONES = Object.freeze(['pivota.cc', 'agenpaz.com', 'agenpas.com', 'reap.global']);
+const RAILWAY_ZONES = Object.freeze(['railway.app', 'railway.internal', 'rlwy.net']);
+const PROD_PROJECT_NAME_RE = /(?<![a-z0-9])(pivota-prod|pivota-staging)(?![a-z0-9])/;
+// Prod's Cloud SQL and Redis and staging's Cloud SQL private IPs, as salted scrypt digests (projectPartDigest), NOT
+// written here: this repository is public. Order: prod SQL, prod Redis, staging SQL. Check them against the real values
+// locally with SANDBOX_REFUSED_IPS_FOR_TEST=<the three, comma-separated, in that order> (never commit them).
+const SHIPPED_REFUSED_IP_DIGESTS = Object.freeze([
+  '7970f70f6165b83240176d7802b643a3c768365ef97480f065fbe6268c7a0e11',
+  '6a7f1d6f721400d55ed674780f99dcd92000505ad37cf6f810e8596d5ec2bfd8',
+  'd65e24ac6add865bc3916a9c42095adbef809a0f9451a23913fd01d61fac1c09',
+]);
+let refusedIpDigests = new Set(SHIPPED_REFUSED_IP_DIGESTS);
+const IPV4_RE = /^\d{1,3}(?:\.\d{1,3}){3}$/;
+
+/** Test-only: refuse these IP digests instead of the shipped ones; no argument restores the shipped list. */
+function setRefusedIpDigestsForTests(digests) {
+  if (!platform.isTestRuntime()) throw new Error('setRefusedIpDigestsForTests is test-only');
+  refusedIpDigests = new Set(digests === undefined ? SHIPPED_REFUSED_IP_DIGESTS : digests);
+}
+
+/** A numeric host the way libc's inet_aton reads it (1 to 4 parts, each decimal, 0-prefixed octal or 0x hex), as a
+ *  canonical dotted quad, or null when it is not one. 10.250.1, 012.250.0.1 and 0x0a.250.0.1 all name 10.250.0.1. */
+function canonicalIpv4(token, { bare = false } = {}) {
+  const t = String(token || '').toLowerCase();
+  // A bare number (one part, no dot, no 0x) is an address to inet_aton too (167772161 is 10.0.0.1); read it only when
+  // asked, so ports and timeouts are not taken for addresses.
+  if (!/^[0-9a-fx.]+$/.test(t) || (!bare && !/[.x]/.test(t))) return null;
+  const parts = t.split('.');
+  if (parts.length < 1 || parts.length > 4 || parts.some((p) => p === '')) return null;
+  const nums = [];
+  for (const p of parts) {
+    let n;
+    if (/^0x[0-9a-f]+$/.test(p)) n = parseInt(p.slice(2), 16);
+    else if (/^0[0-7]*$/.test(p)) n = parseInt(p, 8);
+    else if (/^[1-9][0-9]*$/.test(p)) n = parseInt(p, 10);
+    else return null;
+    nums.push(n);
+  }
+  const last = nums.pop();
+  if (nums.some((n) => n > 255)) return null;
+  const restBits = 8 * (4 - nums.length);
+  if (last >= 2 ** restBits) return null;
+  const tail = [];
+  for (let i = 4 - nums.length - 1; i >= 0; i -= 1) tail.push(Math.floor(last / 2 ** (8 * i)) % 256);
+  return [...nums, ...tail].join('.');
+}
+
+const PRIVATE_RANGE_RE = /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/;
+
+/** True when `token`, read the libc way (bare numbers too), is a refused IP. Only private-range addresses are
+ *  digested (the refused ones are private), so a number that is not one costs nothing. */
+function isRefusedIp(token) {
+  const canonical = canonicalIpv4(token, { bare: true });
+  return canonical !== null && PRIVATE_RANGE_RE.test(canonical) && refusedIpDigests.has(projectPartDigest(canonical));
+}
+
+/** Settings exempt from the brand-zone rule, with the only values allowed: display-only link hosts nothing fetches
+ *  (the AgenPas terms / privacy links point at the real legal pages). Anything else in them is still refused. */
+const DISPLAY_ONLY_HOST_SETTINGS = Object.freeze({ AGENPAS_LEGAL_HOSTS: Object.freeze(['pivota.cc', 'merchant.pivota.cc']) });
+
+function inZone(host, zones) {
+  return zones.find((z) => host === z || host.endsWith(`.${z}`)) || null;
+}
+
+/** A brand-zone host is a sandbox host when one of its labels IS `sandbox` or starts with `sandbox-`
+ *  (sandbox.mcp.pivota.cc, sandbox-api.pivota.cc), never by substring (nosandbox.pivota.cc is not). */
+function isSandboxBrandHost(host, zone) {
+  const labels = host === zone ? [] : host.slice(0, -(zone.length + 1)).split('.');
+  return labels.some((label) => label === 'sandbox' || label.startsWith('sandbox-'));
+}
+
+/** Why `value` (of setting `key`) names something outside the sandbox, or null. Never quotes the value. */
+function allowListProblem(key, value, ownProjectPart) {
+  const low = String(value == null ? '' : value).toLowerCase();
+  if (!low) return null;
+  if (PROD_PROJECT_NAME_RE.test(low)) return 'names a prod or staging GCP project';
+  const exempt = DISPLAY_ONLY_HOST_SETTINGS[key];
+  for (const raw of candidateHosts(low)) {
+    const host = raw.replace(/\.+$/, '');
+    if (isRefusedIp(host)) return 'names a prod or staging database/Redis address';
+    if (!host.includes('.')) continue;
+    if (inZone(host, RAILWAY_ZONES)) return 'names a Railway host';
+    const zone = inZone(host, GUARDED_ZONES);
+    if (zone && !isSandboxBrandHost(host, zone) && !(exempt && exempt.includes(host))) return `names a non-sandbox ${zone} host`;
+    if (host.endsWith('.run.app')) {
+      const part = runAppProjectPart(host);
+      if (!ownProjectPart || part !== ownProjectPart) return 'names a Cloud Run host outside the sandbox project';
+    }
+  }
+  return null;
+}
+
+const PRIVATE_IP_RE = /^(10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3})$/;
+
+/** A database / Redis endpoint is allowed only as a private IP or a Cloud SQL socket in the sandbox's project. */
+function privateEndpointProblem(host, sandboxProject) {
+  const h = String(host || '').trim().toLowerCase();
+  if (!h) return 'no host';
+  if (h.startsWith('/')) {
+    // Exactly /cloudsql/<project>:<region>:<instance>; no other path, no `..`.
+    const socket = /^\/cloudsql\/([a-z][a-z0-9-]*):[a-z0-9-]+:[a-z0-9-]+$/.exec(h);
+    if (!socket) return 'not a Cloud SQL socket path';
+    return sandboxProject && socket[1] === sandboxProject ? null : 'Cloud SQL socket outside the sandbox project';
+  }
+  // Only a canonical dotted quad: 10.025.0.2 or 0x0a.0.0.2 reach a real address through libc but are not this form.
+  if (!require('node:net').isIPv4(h)) return /^[0-9a-fx.]+$/.test(h) && /\d/.test(h) ? 'not a canonical IP address' : 'not a private address';
+  return PRIVATE_IP_RE.test(h) ? null : 'not a private address';
+}
+
+let pgConnectionString = null;
+function parsePgUrl(raw) {
+  if (pgConnectionString === null) {
+    // eslint-disable-next-line global-require
+    const path = require('node:path');
+    // The copy pg itself uses (src/db/index.js resolves it the same way).
+    // eslint-disable-next-line global-require
+    const mod = require(require.resolve('pg-connection-string', { paths: [path.dirname(require.resolve('pg'))] }));
+    pgConnectionString = typeof mod.parse === 'function' ? mod.parse : mod;
+  }
+  return pgConnectionString(raw);
+}
+
+/** EVERY host a postgres / redis URL could connect to: the authority's host, each `host=` parameter (libpq and
+ *  pg-connection-string disagree on which one wins when there are several), and what pg-connection-string itself
+ *  resolves. Null when the URL cannot be parsed at all (refused). */
+function urlConnectHosts(raw) {
+  const s = String(raw).trim();
+  const hosts = new Set();
+  let u = null;
+  try {
+    u = new URL(s);
+  } catch {
+    u = null;
+  }
+  if (u) {
+    if (u.hostname) hosts.add(u.hostname);
+    for (const h of u.searchParams.getAll('host')) hosts.add(h);
+  } else {
+    // Not a WHATWG URL (the standard socket form `postgresql://u:p@/db?host=/cloudsql/...` has credentials and no
+    // host): read the authority's host and every host= parameter by hand.
+    const m = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/?#]*@)?(\[[^\]]*\]|[^/:?#]*)/i.exec(s);
+    if (!m) return null;
+    if (m[1]) hosts.add(m[1]);
+    const q = s.indexOf('?');
+    if (q >= 0) for (const h of new URLSearchParams(s.slice(q + 1).split('#')[0]).getAll('host')) hosts.add(h);
+  }
+  try {
+    const parsed = parsePgUrl(s);
+    if (parsed && parsed.host) hosts.add(String(parsed.host));
+  } catch {
+    return null;
+  }
+  return [...hosts].filter((h) => String(h).trim() !== '');
+}
+
+let ioredisParseUrl = null;
+/** EVERY host a Redis URL could connect to: the WHATWG URL's host and what ioredis itself parses (it differs on
+ *  userinfo tricks: redis://34.1.2.3\\@10.9.0.5:6379 connects to 34.1.2.3). Null when unparsable. */
+function redisUrlHosts(raw) {
+  const s = String(raw).trim();
+  const hosts = new Set();
+  try {
+    const u = new URL(s);
+    if (u.hostname) hosts.add(u.hostname);
+  } catch {
+    // ioredis below decides
+  }
+  try {
+    if (ioredisParseUrl === null) {
+      // eslint-disable-next-line global-require
+      const path = require('node:path');
+      // eslint-disable-next-line global-require
+      ioredisParseUrl = require(path.join(path.dirname(require.resolve('ioredis')), 'utils')).parseURL;
+    }
+    const parsed = ioredisParseUrl(s);
+    if (parsed && parsed.host) hosts.add(String(parsed.host));
+  } catch {
+    return null;
+  }
+  return [...hosts].filter((h) => String(h).trim() !== '');
+}
+
+/** Settings that hold a database or Redis endpoint, by name (every Pool / client the gateway opens). */
+const DB_URL_SETTING_RE = /(^|_)DATABASE_URL$/;
+const REDIS_URL_SETTING_RE = /(^|_)REDIS(_[A-Z0-9]+)*_URL$/;
+const ENDPOINT_HOST_SETTING_RE = /^PGHOST$|(^|_)(PG|REDIS)(_[A-Z0-9]+)*_HOST$/;
+
+/** The hostname of an http(s) URL, or ''. */
+function httpUrlHost(raw) {
+  try {
+    return new URL(String(raw).trim()).hostname;
+  } catch {
+    return '';
+  }
+}
+
+const GCP_PROJECT_ID_RE = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/;
+const ENVIRONMENT_WORDS = Object.freeze(['prod', 'production', 'staging', 'stage', 'stg', 'shared']);
+
+/** Why GOOGLE_CLOUD_PROJECT is not a sandbox project id, or null. Not hard-coded: the sandbox project's id is chosen
+ *  at creation; this asks only that it be a valid id with no environment word in it. */
+function sandboxProjectProblem(id) {
+  const v = String(id || '').trim();
+  if (!v) return 'must be set';
+  if (!GCP_PROJECT_ID_RE.test(v)) return 'not a GCP project id';
+  if (v.split('-').some((w) => ENVIRONMENT_WORDS.includes(w))) return 'names another environment';
+  return null;
+}
+
+/** Settings that name a GCP project the gateway talks to: each, when set, must be the sandbox's own project. */
+const PROJECT_SETTINGS = Object.freeze(['PRICE_CACHE_FIRESTORE_PROJECT']);
+
+/** Settings that turn on a Vertex path of their own, whatever VERTEX_AI_ENABLED says (PIVOTA_AGENT_CENTER_GEMINI_VERTEX_PROJECT,
+ *  MERCHANT_AUDIT_GEMINI_VERTEX_PROJECT, ANTHROPIC_VERTEX_REGION, PIVOTA_AGENT_CENTER_ANTHROPIC_VERTEX_REGION today):
+ *  refused whenever PRESENT in the sandbox. */
+const VERTEX_PATH_SETTING_RE = /(^|_)VERTEX_(PROJECT|REGION|LOCATION)$/;
+
+/** An LLM provider credential setting, by name: <...>_<PROVIDER>[_...]_(API_KEY|APIKEY|KEY|KEYS|TOKEN|SECRET|ACCESS_KEY)[_<n>], plus
+ *  GOOGLE_API_KEY. Today that is GEMINI_API_KEY, PIVOTA_GEMINI_API_KEY, FALLBACK_GEMINI_API_KEY, GOOGLE_API_KEY,
+ *  OPENAI_API_KEY, ANTHROPIC_API_KEY, LLM_API_KEY and AURORA_{DIAG,RECO,SKIN,TRAVEL,VISION}_GEMINI_API_KEY. Not
+ *  LLM_KILL_SWITCH, GEMINI_JSON_TIMEOUT or *_MAX_OUTPUT_TOKENS (they hold no credential). */
+const LLM_KEY_SETTING_RE = /^(?:[A-Z0-9_]*_)?(?:GEMINI|OPENAI|AZURE_OPENAI|ANTHROPIC|CLAUDE|LLM|GENAI|GOOGLE_GENERATIVE_AI|GENERATIVE_AI|VERTEX|OPENROUTER|DASHSCOPE|QWEN|DEEPSEEK|MOONSHOT|KIMI|ZHIPU|MINIMAX|MISTRAL|COHERE|GROQ|PERPLEXITY|XAI|TOGETHER|FIREWORKS|REPLICATE|HUGGINGFACE|BEDROCK|VOYAGE|JINA)(?:_[A-Z0-9]+)*_?(?:(?:API_?)?KEYS?|TOKEN|SECRET|ACCESS_KEY)(?:_\d+)?$|^GOOGLE_API_?KEYS?(?:_\d+)?$/;
 
 /**
  * The settings that name the backend this gateway calls. PIVOTA_API_BASE is REQUIRED (unset, the gateway calls
@@ -252,6 +536,67 @@ function sandboxConfigProblems(env = process.env) {
     if (valueNamesRefusedHost(e[key])) problems.push(`${key}(prod or staging host)`);
   }
 
+  // The allow list, over every setting (one problem per setting; the deny-list hit above already names it).
+  const ownProjectPart = runAppProjectPart(httpUrlHost(e[REQUIRED_BACKEND_URL_SETTING]));
+  const apiHost = httpUrlHost(e[REQUIRED_BACKEND_URL_SETTING]).toLowerCase();
+  if (apiHost && !ownProjectPart && !(inZone(apiHost, GUARDED_ZONES) && isSandboxBrandHost(apiHost, inZone(apiHost, GUARDED_ZONES)))) {
+    problems.push(`${REQUIRED_BACKEND_URL_SETTING}(must be the sandbox backend: a run.app host or a sandbox host)`);
+  }
+  const denied = new Set(problems.map((p) => p.slice(0, p.indexOf('('))));
+  for (const key of Object.keys(e).sort()) {
+    if (denied.has(key)) continue;
+    const why = allowListProblem(key, e[key], ownProjectPart);
+    if (why) problems.push(`${key}(${why})`);
+  }
+
+  // The project this revision runs in (set from one source by the sandbox deploy). A sandbox-SHAPED id only: it does not
+  // by itself prove the sandbox; the deploy's own read-back does (sandbox infra).
+  const projectWhy = sandboxProjectProblem(e.GOOGLE_CLOUD_PROJECT);
+  if (projectWhy) problems.push(`GOOGLE_CLOUD_PROJECT(${projectWhy})`);
+  const sandboxProject = projectWhy ? null : str(e.GOOGLE_CLOUD_PROJECT);
+  for (const key of PROJECT_SETTINGS) {
+    if (str(e[key]) && str(e[key]) !== sandboxProject) problems.push(`${key}(must be the sandbox project)`);
+  }
+
+  // The database and Redis: private, and in the sandbox's own project.
+  for (const key of Object.keys(e).sort().filter((k) => DB_URL_SETTING_RE.test(k) || REDIS_URL_SETTING_RE.test(k))) {
+    if (!str(e[key])) continue;
+    const hosts = REDIS_URL_SETTING_RE.test(key) ? redisUrlHosts(e[key]) : urlConnectHosts(e[key]);
+    if (hosts === null) {
+      problems.push(`${key}(not a parsable URL)`);
+      continue;
+    }
+    const why = hosts.length === 0 ? 'no host' : hosts.map((h) => privateEndpointProblem(h, sandboxProject)).find(Boolean);
+    if (why) problems.push(`${key}(${why})`);
+  }
+  for (const key of Object.keys(e).sort().filter((k) => ENDPOINT_HOST_SETTING_RE.test(k))) {
+    if (!str(e[key])) continue;
+    const why = privateEndpointProblem(e[key], sandboxProject);
+    if (why) problems.push(`${key}(${why})`);
+  }
+
+  // The Aurora BFF is not loaded in the sandbox (src/server.js), so a fail-closed switch for it would refuse the
+  // boot later with a less useful message: refuse it here, by name.
+  for (const key of ['AURORA_ROUTES_FAIL_CLOSED', 'AURORA_BFF_FAIL_CLOSED']) {
+    if (['1', 'true', 'yes', 'y', 'on'].includes(str(e[key]).toLowerCase())) problems.push(`${key}(the Aurora BFF is not loaded in the sandbox)`);
+  }
+
+  // LEXICAL-ONLY (sandbox plan Q7): no Vertex/Gemini call from the sandbox. GOOGLE_CLOUD_PROJECT is the sandbox signal
+  // there, and its only gateway reader is the Vertex client (src/llm/vertexGemini.js), which would then bill and call
+  // in the sandbox project. VERTEX_AI_ENABLED is refused in ANY truthy spelling (the reader takes only 'true', so
+  // this is stricter), and the LLM kill switch must be exactly 'true'.
+  if (['1', 'true', 'yes', 'y', 'on'].includes(str(e.VERTEX_AI_ENABLED).toLowerCase())) problems.push('VERTEX_AI_ENABLED(must be off in the sandbox)');
+  // Kept as a pin; its only reader (auroraBff/diagRollout.js) is not loaded in the sandbox, so it guarantees nothing alone.
+  if (e.LLM_KILL_SWITCH !== 'true') problems.push('LLM_KILL_SWITCH(must be exactly true in the sandbox)');
+  for (const key of Object.keys(e).sort()) {
+    if (VERTEX_PATH_SETTING_RE.test(key)) problems.push(`${key}(no Vertex path may be configured in the sandbox)`);
+  }
+  // ...and no LLM provider key may even be PRESENT (empty included), so no non-Vertex path (an API-key Gemini,
+  // OpenAI or Anthropic client) has a credential to call with. Matched by NAME, so a key added later is caught too.
+  for (const key of Object.keys(e).sort()) {
+    if (LLM_KEY_SETTING_RE.test(key)) problems.push(`${key}(no LLM key may be set in the sandbox)`);
+  }
+
   // Live reads and store fetches.
   for (const flag of LIVE_READ_FLAGS) {
     if (!flagIsOff(e, flag)) problems.push(`${flag.name}(must be off${flag.requireExplicit ? ', set explicitly' : ''})`);
@@ -374,6 +719,13 @@ function sandboxResponseMarks(isMarkedPath) {
   };
 }
 
+/** The paths whose JSON bodies the sandbox marks: the MCP doors and the REST invoke routes. Normalized the way Express
+ *  routes them (case-insensitive, trailing slashes ignored), so /MCP and /agent/shop/v1/invoke/ are marked too. */
+const SANDBOX_MARKED_PATHS = Object.freeze(['/mcp', '/ucp/mcp', '/agent/shop/v1/invoke', '/agent/creator/v1/invoke']);
+function isSandboxMarkedPath(path) {
+  return SANDBOX_MARKED_PATHS.includes(String(path || '').toLowerCase().replace(/\/+$/, ''));
+}
+
 module.exports = {
   LIVE_AGENT_API_KEY_PATTERN,
   SANDBOX_AGENT_API_KEY_PATTERN,
@@ -388,6 +740,8 @@ module.exports = {
   projectPartDigest,
   setRefusedProjectDigestsForTests,
   SHIPPED_REFUSED_PROJECT_DIGESTS,
+  SHIPPED_REFUSED_IP_DIGESTS,
+  setRefusedIpDigestsForTests,
   sandboxConfigProblems,
   assertSandboxConfig,
   copiedPricesAreFresh,
@@ -397,4 +751,12 @@ module.exports = {
   markSandboxRpcOutcome,
   markSandboxRpcBody,
   sandboxResponseMarks,
+  isSandboxMarkedPath,
+  SANDBOX_MARKED_PATHS,
+  runAppProjectPart,
+  sandboxProjectProblem,
+  LLM_KEY_SETTING_RE,
+  VERTEX_PATH_SETTING_RE,
+  canonicalIpv4,
+  isRefusedIp,
 };
