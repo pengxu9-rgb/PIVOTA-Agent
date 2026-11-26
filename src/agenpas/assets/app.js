@@ -95,6 +95,21 @@
     // The consent offer on screen: { step, offer, shownAt, checked, posting, accepted, error, retryAt, button }.
     consent: null,
     latestOffer: null,
+    // The card choice (AGENPAS_CARD_PICKER_ENABLED): the card the buyer picked here (a handle, memory only), whether the
+    // picker is open and what it has ticked, a POST in flight, its message, its automatic retries, and whether this page
+    // confirmed the card (the approval screen then says "Continue to the secure page").
+    cardDraft: null,
+    cardPickerOpen: false,
+    cardPickerDraft: null,
+    cardBusy: false,
+    cardMessage: null,
+    cardRetries: 0,
+    cardConfirmed: false,
+    // The radio that had the keyboard before a re-render (a handle): it gets the focus back.
+    cardFocus: null,
+    // When the last card-choice POST was sent (ms): a poll that started before it answers with an older view, which is
+    // dropped (it would show the unconfirmed choice again after the confirmation).
+    cardPostAt: 0,
   };
 
   // ---- tiny DOM helpers ----------------------------------------------------------------------------------------
@@ -625,6 +640,220 @@
     return card;
   }
 
+  // ---- the card choice ------------------------------------------------------------------------------------------
+
+  var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  // A stale answer while the worker holds the purchase lasts a moment: the page sends the same card again, twice at most.
+  var CARD_CHOICE_RETRIES = 2;
+  var CARD_CHOICE_RETRY_MS = 1500;
+
+  function cardLabel(card) {
+    return card.label + (card.last4 ? ' ending ' + card.last4 : '');
+  }
+
+  function cardAdded(card) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(card.added_on || ''));
+    return m ? 'Added ' + MONTHS[Number(m[2]) - 1] + ' ' + Number(m[3]) : null;
+  }
+
+  function hasCard(choice, handle) {
+    return choice.cards.some(function (c) { return c.handle === handle; });
+  }
+
+  function selectedCard(choice) {
+    var picked = null;
+    choice.cards.forEach(function (c) { if (!choice.confirmed && ui.cardDraft && c.handle === ui.cardDraft) picked = c; });
+    if (picked) return picked;
+    choice.cards.forEach(function (c) { if (!picked && c.selected) picked = c; });
+    return picked;
+  }
+
+  // The buyer's pick is no longer on the list (a card removed, the list changed): never fall back to another card
+  // without saying so.
+  function forgetVanishedPick(choice) {
+    if (choice.confirmed) return;
+    if (ui.cardDraft && !hasCard(choice, ui.cardDraft)) {
+      ui.cardDraft = null;
+      ui.cardMessage = 'Your saved cards changed. Check the card, then approve again.';
+    }
+    if (ui.cardPickerDraft && !hasCard(choice, ui.cardPickerDraft)) ui.cardPickerDraft = null;
+  }
+
+  function cardPicker(choice, current) {
+    var box = el('fieldset', 'card-picker');
+    append(box, el('legend', null, 'Choose a card'));
+    var draft = ui.cardPickerDraft || current.handle;
+    choice.cards.forEach(function (c) {
+      var on = c.handle === draft;
+      var option = el('label', on ? 'card-option selected' : 'card-option');
+      var radio = el('input');
+      radio.type = 'radio';
+      radio.name = 'card';
+      radio.value = c.handle;
+      radio.checked = on;
+      radio.addEventListener('change', function () { ui.cardPickerDraft = c.handle; ui.cardFocus = c.handle; render(); });
+      if (ui.cardFocus === c.handle) {
+        ui.cardFocus = null;
+        setTimeout(function () { radio.focus(); }, 0);
+      }
+      var text = el('span', 'card-option-text');
+      append(text, el('span', 'card-option-label', cardLabel(c)));
+      var added = cardAdded(c);
+      if (added) append(text, el('span', 'fine', added));
+      append(option, radio, text);
+      box.appendChild(option);
+    });
+    var use = el('button', 'btn btn-primary', 'Use this card');
+    use.type = 'button';
+    use.addEventListener('click', function () {
+      ui.cardDraft = ui.cardPickerDraft || current.handle;
+      ui.cardPickerOpen = false;
+      ui.cardPickerDraft = null;
+      ui.cardMessage = null;
+      render();
+    });
+    var cancel = el('button', 'btn btn-ghost', 'Cancel');
+    cancel.type = 'button';
+    cancel.addEventListener('click', function () {
+      ui.cardPickerOpen = false;
+      ui.cardPickerDraft = null;
+      render();
+    });
+    append(box, use, cancel);
+    append(box, el('p', 'fine', 'Saved with our payment partner. We only see the last four digits.'));
+    return box;
+  }
+
+  function chooseCardCard(view) {
+    var choice = view.card_choice;
+    forgetVanishedPick(choice);
+    // A choice still open: whatever an earlier approval on this page did, this one is not confirmed yet.
+    if (!choice.confirmed) ui.cardConfirmed = false;
+    var current = selectedCard(choice);
+    var quoted = money(view.amounts && view.amounts.quoted_total_minor, view.currency);
+    var card = el('section', 'card step');
+    append(card, el('h1', null, 'Approve your purchase'));
+    append(card, el('p', 'muted', choice.confirmed
+      ? "Next, confirm with Face ID or fingerprint on our payment partner's secure page."
+      : "Check the card, then approve. You'll confirm with Face ID or fingerprint on our payment partner's secure page."));
+    var rows = el('dl', 'rows');
+    var row = el('div', 'row card-row');
+    var value = el('dd');
+    append(value, el('span', 'card-row-label', cardLabel(current)));
+    var added = !choice.confirmed && cardAdded(current);
+    if (added) append(value, el('span', 'fine card-row-added', added));
+    append(row, el('dt', null, 'Pay with'), value);
+    if (!choice.confirmed && choice.cards.length > 1 && !ui.cardPickerOpen) {
+      var change = el('button', 'btn-change', 'Change');
+      change.type = 'button';
+      change.setAttribute('aria-label', 'Change card');
+      change.disabled = ui.cardBusy;
+      change.addEventListener('click', function () {
+        ui.cardPickerOpen = true;
+        ui.cardPickerDraft = current.handle;
+        render();
+      });
+      row.appendChild(change);
+    }
+    // While the picker is open it IS the card line: the row comes back when a card is picked.
+    if (!ui.cardPickerOpen || choice.confirmed) append(card, append(rows, row));
+    if (choice.confirmed) {
+      var prep = el('div', 'waiting');
+      append(prep, spinner(), el('p', 'waiting-text', 'Getting the secure page ready…'));
+      card.appendChild(prep);
+      return card;
+    }
+    if (ui.cardPickerOpen) {
+      card.appendChild(cardPicker(choice, current));
+      return card;
+    }
+    if (ui.cardMessage) {
+      var note = el('p', 'form-error', ui.cardMessage);
+      note.setAttribute('role', 'alert');
+      card.appendChild(note);
+    }
+    // The approval terms first: the card is part of what the buyer approves. Approve appears once they are accepted.
+    if (choice.consent_pending) {
+      if (view.consent) card.appendChild(consentBlock(view));
+      return card;
+    }
+    var approve = el('button', 'btn btn-primary', ui.cardBusy ? 'Approving…' : quoted ? 'Approve ' + quoted : 'Approve');
+    approve.type = 'button';
+    approve.disabled = ui.cardBusy;
+    approve.addEventListener('click', function () { submitCardChoice(current.handle); });
+    card.appendChild(approve);
+    return card;
+  }
+
+  function submitCardChoice(handle) {
+    if (ui.cardBusy) return;
+    ui.cardBusy = true;
+    ui.cardMessage = null;
+    ui.cardPostAt = Date.now();
+    render();
+    fetch('/agenpas/api/p/' + match[1] + '/card-choice', {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Agenpas-Link': token },
+      body: JSON.stringify({ handle: handle }),
+      cache: 'no-store',
+      credentials: 'omit',
+      referrerPolicy: 'no-referrer',
+    }).then(function (res) {
+      return res.json().catch(function () { return null; }).then(function (b) { return { status: res.status, body: b }; });
+    }).then(function (r) {
+      ui.cardBusy = false;
+      if (r.status === 200 && r.body && typeof r.body.screen === 'string') {
+        ui.cardConfirmed = true;
+        ui.cardRetries = 0;
+        ui.cardPickerOpen = false;
+        ui.view = r.body;
+        ui.lastJson = viewKey(r.body);
+        render();
+        if (r.body.terminal) { stop(); forgetToken(); return; }
+        schedule(r.body.poll_after_seconds);
+        return;
+      }
+      var refusal = r.status === 409 && r.body && typeof r.body.error === 'string' ? r.body.error : null;
+      if (refusal === 'consent_required') {
+        // The terms are not on record (yet, or any more): read again, and the page offers them first.
+        ui.cardRetries = 0;
+        ui.cardMessage = null;
+        pollNow();
+        render();
+        return;
+      }
+      if (refusal === 'card_choice_stale' && ui.cardRetries < CARD_CHOICE_RETRIES) {
+        // Most often the worker is looking at the purchase this very moment: the same card again, shortly.
+        ui.cardRetries += 1;
+        ui.cardBusy = true;
+        render();
+        setTimeout(function () { ui.cardBusy = false; submitCardChoice(handle); }, CARD_CHOICE_RETRY_MS);
+        return;
+      }
+      ui.cardRetries = 0;
+      if (refusal === 'card_choice_stale' || refusal === 'card_choice_not_offered') {
+        ui.cardDraft = null;
+        ui.cardMessage = 'Your saved cards changed. Check the card, then approve again.';
+        pollNow();
+      } else if (refusal === 'card_choice_closed') {
+        ui.cardMessage = null;
+        pollNow();
+      } else if (r.status === 429) {
+        ui.cardMessage = 'Too many tries. Wait a minute, then try again.';
+      } else if (r.status === 410) {
+        showExpired(r.body && r.body.link_ttl_minutes);
+        return;
+      } else {
+        ui.cardMessage = "We couldn't approve that just now. Please try again in a moment.";
+      }
+      render();
+    }).catch(function () {
+      ui.cardBusy = false;
+      ui.cardMessage = "We couldn't approve that just now. Please try again in a moment.";
+      render();
+    });
+  }
+
   function progressCard(title, body) {
     var card = el('section', 'card step');
     var head = el('div', 'progress-head');
@@ -967,6 +1196,8 @@
           button: 'Add a card securely',
           waiting: 'Waiting for your card…',
         }));
+      case 'choose_card':
+        return assurance(view, chooseCardCard(view));
       case 'confirming_total': {
         var confirming = progressCard('Confirming your total', 'Getting the final total from ' + m + ', including shipping and tax…');
         // The approval's terms may be accepted while the total is confirmed.
@@ -982,7 +1213,8 @@
         return assurance(view, actionCard(view, {
           title: 'Approve your purchase',
           body: "With Face ID or fingerprint, on our payment partner's secure page.",
-          button: quoted ? 'Approve ' + quoted : 'Approve',
+          // The card was confirmed on this page with "Approve": this button only opens the secure page.
+          button: ui.cardConfirmed ? 'Continue to the secure page' : quoted ? 'Approve ' + quoted : 'Approve',
           waiting: 'Waiting for your approval…',
           showCard: true,
         }));
@@ -1195,6 +1427,7 @@
     }
     ui.inFlight = true;
     ui.lastPollAt = Date.now();
+    var startedAt = ui.lastPollAt;
     fetch('/agenpas/api/p/' + match[1], {
       method: 'GET',
       headers: { Accept: 'application/json', 'X-Agenpas-Link': token },
@@ -1205,6 +1438,11 @@
       return res.json().catch(function () { return null; }).then(function (body) { return { status: res.status, body: body }; });
     }).then(function (r) {
       ui.inFlight = false;
+      if (r.status === 200 && r.body && typeof r.body.screen === 'string' && startedAt < ui.cardPostAt) {
+        // Read before the card was confirmed (or refused): older than what the page holds. Read again shortly.
+        schedule(POLL_MIN);
+        return;
+      }
       if (r.status === 200 && r.body && typeof r.body.screen === 'string') {
         syncConsent(r.body);
         trackAddressStep(r.body);

@@ -659,7 +659,8 @@ function outcomeFor(state, codes) {
  * The screen the page shows. `state` is the unified state; `actionKind` the vetted action's kind, or null.
  *   routing                          -> preparing
  *   needs_payment_method             -> add_card
- *   locking                          -> confirming_total (the merchant prices the exact cart; nothing approved yet)
+ *   locking                          -> confirming_total (the merchant prices the exact cart; nothing approved yet),
+ *                                       or choose_card while the backend's card_choice waits on the buyer (flag on)
  *   awaiting_buyer_authorization     -> approve
  *   placing                          -> placing, or authenticate while the bank's check page is offered, or
  *                                       outcome_unknown (NOT terminal: polling goes on) while a hold code is set
@@ -715,13 +716,60 @@ const CARD_NETWORK_LABELS = Object.freeze({
   dinersclub: 'Diners Club',
 });
 
+function cardLabelFor(network) {
+  const key = typeof network === 'string' ? network.toLowerCase().replace(/[\s_-]+/g, '') : '';
+  return Object.prototype.hasOwnProperty.call(CARD_NETWORK_LABELS, key) ? CARD_NETWORK_LABELS[key] : 'Card';
+}
+
 function paymentCardFor(raw, screen) {
   if (!CARD_SCREENS.has(screen) || !isPlainObject(raw)) return null;
   const last4 = typeof raw.last4 === 'string' ? raw.last4 : '';
   if (!LAST4_RE.test(last4)) return null;
-  const key = typeof raw.network === 'string' ? raw.network.toLowerCase().replace(/[\s_-]+/g, '') : '';
-  const label = Object.prototype.hasOwnProperty.call(CARD_NETWORK_LABELS, key) ? CARD_NETWORK_LABELS[key] : 'Card';
-  return { label, last4 };
+  return { label: cardLabelFor(raw.network), last4 };
+}
+
+// ---- the buyer's card choice (AGENPAS_CARD_PICKER_ENABLED) --------------------------------------------------------
+//
+// The backend's top-level `card_choice = {confirmed, expires_at, cards: [{handle, network, last4, added_at, selected}]}`
+// (pivota-backend docs/agent_purchases_routes.md, behind its AGENPAS_CARD_PICKER_ENABLED): an A2A purchase whose order is
+// locked waits for the buyer to confirm the card BEFORE any token is asked for. Read only from the top level (never
+// `detail`). Every card is checked again and never repaired: one bad card (a handle out of shape, or no four digits:
+// two cards the buyer cannot tell apart are no choice), two selected, or a deadline already passed, and there is no
+// choice at all (the page then says "not available right now", never a spinner). `handle` names the card for this purchase only
+// (never the rail's card id); the network becomes a label from the fixed list above; `added_on` is a real calendar
+// date (YYYY-MM-DD) or null.
+const CARD_HANDLE_RE = /^[0-9a-f]{24}$/;
+const CARD_CHOICE_MAX = 10;
+const CARD_ADDED_RE = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])(?:[T ]|$)/;
+
+function cardChoiceFor(raw, nowMs) {
+  if (!isPlainObject(raw) || !Array.isArray(raw.cards)) return null;
+  if (raw.cards.length < 1 || raw.cards.length > CARD_CHOICE_MAX) return null;
+  const cards = [];
+  const seen = new Set();
+  for (const c of raw.cards) {
+    if (!isPlainObject(c) || typeof c.handle !== 'string' || !CARD_HANDLE_RE.test(c.handle) || seen.has(c.handle)) return null;
+    seen.add(c.handle);
+    if (typeof c.last4 !== 'string' || !LAST4_RE.test(c.last4)) return null;
+    const last4 = c.last4;
+    const match = typeof c.added_at === 'string' ? CARD_ADDED_RE.exec(c.added_at) : null;
+    // A real calendar date only (2026-02-31 is none).
+    const added = match && new Date(Date.UTC(+match[1], +match[2] - 1, +match[3])).getUTCDate() === +match[3] ? match : null;
+    cards.push({
+      handle: c.handle,
+      label: cardLabelFor(c.network),
+      last4,
+      added_on: added ? `${added[1]}-${added[2]}-${added[3]}` : null,
+      selected: c.selected === true,
+    });
+  }
+  if (cards.filter((c) => c.selected).length !== 1) return null;
+  const confirmed = raw.confirmed === true;
+  if (!confirmed) {
+    const expires = isoOrNull(raw.expires_at, nowMs);
+    if (!expires.iso || expires.past) return null;
+  }
+  return { confirmed, cards };
 }
 
 // ---- the agent's name ---------------------------------------------------------------------------------------------
@@ -842,7 +890,7 @@ const DETAILS_NEEDED_COPY = Object.freeze({
  */
 function buildView(body, {
   purchaseId, hostedHosts = [], embed = false, now, linkExpiresAt, linkTtlMinutes, collectShipping = false,
-  consentEnabled = false, legalHosts = [],
+  consentEnabled = false, legalHosts = [], cardPicker = false,
 } = {}) {
   const nowMs = typeof now === 'number' ? now : Date.now();
   const src = isPlainObject(body) ? body : {};
@@ -951,8 +999,27 @@ function buildView(body, {
     screen = 'details_needed';
   }
   if (unavailable && (screen === 'add_card' || screen === 'approve')) screen = 'unavailable';
+  // THE CARD CHOICE: only while the total is being confirmed (the backend's `locking`: the order is locked, nothing is
+  // minted), only on the A2A rail, never while held. Unconfirmed, the buyer picks and approves; confirmed, the page shows
+  // the card while the secure page is got ready. The backend takes the card only after the approval step's terms (its
+  // consent gate): unaccepted, they are offered here first (`consent_pending`), or, when they cannot be offered, the
+  // step is "not available right now". Never an Approve the backend would refuse.
+  const cardChoiceShown = cardPicker && screen === 'confirming_total' && rail === 'a2a' && !held
+    && src.card_choice !== undefined && src.card_choice !== null;
+  let cardChoice = cardChoiceShown ? cardChoiceFor(src.card_choice, nowMs) : null;
+  // A choice the backend sent that does not check out: never a spinner until its deadline, never a repaired choice.
+  if (cardChoiceShown && !cardChoice) screen = 'unavailable';
+  if (cardChoice && !cardChoice.confirmed && !satisfiedFor('approval')) {
+    if (consentEnabled && isOfferable(block, 'approval')) cardChoice = { ...cardChoice, consent_pending: true };
+    else {
+      cardChoice = null;
+      screen = 'unavailable';
+    }
+  }
+  if (cardChoice) screen = 'choose_card';
   const shippingConsentScreen = shippingOfferable && screen === 'shipping_address';
-  const consentScreen = screen === 'add_card' || screen === 'approve' || screen === 'confirming_total' || shippingConsentScreen;
+  const consentScreen = screen === 'add_card' || screen === 'approve' || screen === 'confirming_total'
+    || screen === 'choose_card' || shippingConsentScreen;
   const offeredStep = shippingConsentScreen ? SHIPPING_STEP : consentStep;
   let consent = null;
   let record = null;
@@ -1000,6 +1067,8 @@ function buildView(body, {
   };
   // Only while AGENPAS_CONSENT_ENABLED is on: off, the view has exactly the members it always had.
   if (consentEnabled) view.consent = consent;
+  // Only while the buyer chooses the card: otherwise no member at all (and never with the flag off).
+  if (cardChoice) view.card_choice = cardChoice;
   // Only when the backend names the card and the screen may show it: otherwise no member at all.
   const paymentCard = paymentCardFor(src.payment_card, screen);
   if (paymentCard) view.payment_card = paymentCard;
@@ -1016,7 +1085,8 @@ function buildView(body, {
  * Project one backend body for the page.
  * @param {object} body  the backend's unified purchase body
  * @param {{ purchaseId: string, hostedHosts: string[], embed?: boolean, now?: number, linkExpiresAt?: number,
- *           linkTtlMinutes?: number, collectShipping?: boolean, consentEnabled?: boolean, legalHosts?: string[] }} opts
+ *           linkTtlMinutes?: number, collectShipping?: boolean, consentEnabled?: boolean, legalHosts?: string[],
+ *           cardPicker?: boolean }} opts
  *        linkExpiresAt is the link token's `exp` (unix seconds); linkTtlMinutes its lifetime, for the page's copy;
  *        consentEnabled is AGENPAS_CONSENT_ENABLED, legalHosts AGENPAS_LEGAL_HOSTS
  */

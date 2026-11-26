@@ -84,6 +84,7 @@ const KEYS = [
   'AGENPAS_ENABLED', 'AGENPAS_LINK_SECRET', 'AGENPAS_PUBLIC_BASE_URL', 'AGENPAS_HOSTED_HOSTS', 'AGENPAS_DEV_FIXTURES',
   'AGENPAS_EMBED_HOSTED_PAGES', 'AGENPAS_LINK_TTL_SECONDS', 'AGENPAS_INTERNAL_READ_KEY', 'AGENPAS_COLLECT_SHIPPING',
   'AGENPAS_CONSENT_ENABLED', 'AGENPAS_LEGAL_HOSTS', 'AGENPAS_RAILS', 'AGENPAS_INTERNAL_CONSENT_KEY',
+  'AGENPAS_CARD_PICKER_ENABLED',
 ];
 const PID = 'ap_000000000000000000000001';
 
@@ -276,6 +277,40 @@ describe('AgenPas routes in the gateway app', () => {
     process.env.AGENPAS_PUBLIC_BASE_URL = 'https://agenpas.example';
     const front = await rawGet(app, '/agenpas/dev/start?scenario=happy', 'agenpas.example');
     expect(front.headers['x-agenpas-guard']).toBe('front');
+  });
+
+  describe('the card-choice write on the real server (AGENPAS_CARD_PICKER_ENABLED)', () => {
+    const CHOICE = '/agenpas/api/p/ap_000000000000000000000001/card-choice';
+    const rawPost = (app, path, host, bodyText, extra = '') => rawRequest(app,
+      `POST ${path} HTTP/1.1\r\nHost: ${host}\r\nContent-Type: application/json\r\nContent-Length: ${Buffer.byteLength(bodyText)}\r\n${extra}Connection: close\r\n\r\n${bodyText}`);
+    beforeEach(() => {
+      process.env.AGENPAS_ENABLED = '1';
+      process.env.AGENPAS_LINK_SECRET = 'server-mount-test-secret-0123456789abcdef';
+      process.env.AGENPAS_PUBLIC_BASE_URL = 'https://agenpas.example';
+      process.env.AGENPAS_CONSENT_ENABLED = '1';
+    });
+
+    test('flag off: the POST is refused by the front guard like any other write', async () => {
+      const app = require('../src/server');
+      const res = await rawPost(app, CHOICE, 'agenpas.example', '{}');
+      expect([res.status, res.headers['x-agenpas-guard']]).toEqual([404, 'front']);
+    });
+
+    test('flag on: that POST is admitted and routed (its own refusals), traversal spellings and a 5 KB body are not', async () => {
+      process.env.AGENPAS_CARD_PICKER_ENABLED = '1';
+      const app = require('../src/server');
+      const noOrigin = await rawPost(app, CHOICE, 'agenpas.example', '{}');
+      expect([noOrigin.status, noOrigin.headers['x-agenpas-guard']]).toEqual([403, undefined]);
+      const noLink = await rawPost(app, CHOICE, 'agenpas.example', '{}', 'Origin: https://agenpas.example\r\n');
+      expect([noLink.status, JSON.parse(noLink.body)]).toEqual([404, { error: 'link_invalid' }]);
+      for (const p of [`${CHOICE}/`, `${CHOICE}%2f`, '/agenpas/api/p/ap_000000000000000000000001//card-choice',
+        '/agenpas/api/p/ap_000000000000000000000001/CARD-CHOICE', '/agenpas/api/p/not_an_id/card-choice']) {
+        const res = await rawPost(app, p, 'agenpas.example', '{}');
+        expect([p, res.status, res.headers['x-agenpas-guard']]).toEqual([p, 404, 'front']);
+      }
+      const big = await rawPost(app, CHOICE, 'agenpas.example', JSON.stringify({ handle: 'a'.repeat(24), pad: 'x'.repeat(5000) }));
+      expect(big.status).toBe(413);
+    });
   });
 
   describe('the shipping-address write on the real server (AGENPAS_COLLECT_SHIPPING)', () => {

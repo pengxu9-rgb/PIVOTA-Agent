@@ -23,6 +23,12 @@
  *   AGENPAS_COLLECT_SHIPPING      default OFF (inside AGENPAS_ENABLED). On: when the purchase lacks a shipping address
  *                                 or email, the page asks for it and submits it (POST /agenpas/api/p/:id/shipping-
  *                                 address). Off: the page says "Go back to the chat to add your address".
+ *   AGENPAS_CARD_PICKER_ENABLED   default OFF (inside AGENPAS_ENABLED). On: while the backend says an A2A purchase waits
+ *                                 for the buyer's card (its `card_choice`, behind the backend's flag of the same name),
+ *                                 the page shows the card it will pay with, lets the buyer pick another saved card and
+ *                                 confirms it on Approve (POST /agenpas/api/p/:id/card-choice). Counts only while
+ *                                 AGENPAS_CONSENT_ENABLED is on too (the approval terms come first). Off: that route does
+ *                                 not exist and the page is as before.
  *   AGENPAS_DEV_FIXTURES          local development only: canned purchases instead of the backend. Refused (treated as
  *                                 off) on any managed platform or production environment (src/config/platform.js).
  *
@@ -105,6 +111,11 @@ function collectShipping(env = process.env) {
   return isEnabled(env) && on(env, 'AGENPAS_COLLECT_SHIPPING');
 }
 
+/** The card choice: only with the consent flag on too (the backend takes the card only after the approval terms). */
+function cardPicker(env = process.env) {
+  return isEnabled(env) && on(env, 'AGENPAS_CARD_PICKER_ENABLED') && consentEnabled(env);
+}
+
 function embedHostedPages(env = process.env) {
   return on(env, 'AGENPAS_EMBED_HOSTED_PAGES');
 }
@@ -176,6 +187,7 @@ function rails(env = process.env, warn = warnRailsOnce) {
 
 module.exports = {
   MAX_TTL_SECONDS,
+  cardPicker,
   collectShipping,
   MIN_SECRET_CHARS,
   consentEnabled,

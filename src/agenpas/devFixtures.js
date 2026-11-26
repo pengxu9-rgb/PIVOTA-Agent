@@ -26,7 +26,19 @@ const SCENARIOS = Object.freeze({
   // An A2A purchase whose address form is consent-gated (AGENPAS_CONSENT_ENABLED and AGENPAS_COLLECT_SHIPPING): the
   // terms first, then the form, then the card step.
   address_consent: { id: 'ap_000000000000000000000008' },
+  // An A2A returning buyer with two saved cards (AGENPAS_CARD_PICKER_ENABLED and AGENPAS_CONSENT_ENABLED): the order is
+  // locked and waits; the approval terms first, then the buyer approves with the newest card or picks the other; then
+  // the approval page, then the order.
+  card_choice: { id: 'ap_000000000000000000000009' },
 });
+
+// card_choice: which card each link confirmed, and when (dev memory only).
+const cardConfirmed = new Map();
+const FIXTURE_CARDS = Object.freeze([
+  Object.freeze({ id: 'fixture_card_newest', network: 'visa', last4: '4242', added_at: '2026-11-20T00:00:00Z' }),
+  Object.freeze({ id: 'fixture_card_older', network: 'visa', last4: '1881', added_at: '2026-10-02T00:00:00Z' }),
+]);
+const fixtureCardHandle = (purchaseId, cardId) => crypto.createHash('sha256').update(`fixture:${purchaseId}:${cardId}`).digest('hex').slice(0, 24);
 
 // needs_address: which links have given their address (dev memory only; a digest, never the address itself).
 const addressGiven = new Map();
@@ -194,6 +206,43 @@ function fixturePurchase(claims, { now, accepted } = {}) {
       body.detail.last_error_code = 'vic_authorization_declined';
       return body;
     }
+    case 'card_choice': {
+      const confirmed = cardConfirmed.get(addressKey(claims));
+      const steps = accepted instanceof Map ? accepted : new Map();
+      if (!confirmed) {
+        return base(id, 'locking', {
+          consent: fixtureConsentBlock('approval', steps.has('approval'), nowMs),
+          card_choice: {
+            confirmed: false,
+            expires_at: new Date((claims.iat + 30 * 60) * 1000).toISOString(),
+            cards: FIXTURE_CARDS.map((c, i) => ({
+              handle: fixtureCardHandle(id, c.id), network: c.network, last4: c.last4, added_at: c.added_at, selected: i === 0,
+            })),
+          },
+        });
+      }
+      const since = Math.max(0, nowMs / 1000 - confirmed.at);
+      const state = step(since, [[0, 'locking'], [3, 'awaiting_buyer_authorization'], [25, 'placing'], [30, 'completed']]);
+      const card = FIXTURE_CARDS.find((c) => c.id === confirmed.cardId);
+      const paid = { payment_card: { network: card.network, last4: card.last4 } };
+      if (state === 'locking') {
+        return base(id, state, {
+          consent: fixtureConsentBlock('approval', true, nowMs),
+          card_choice: {
+            confirmed: true, expires_at: null,
+            cards: FIXTURE_CARDS.map((c) => ({
+              handle: fixtureCardHandle(id, c.id), network: c.network, last4: c.last4, added_at: c.added_at,
+              selected: c.id === confirmed.cardId,
+            })),
+          },
+        });
+      }
+      if (state === 'awaiting_buyer_authorization') {
+        return base(id, state, { next_action: action('approval', claims.iat), consent: fixtureConsentBlock('approval', true, nowMs), ...paid });
+      }
+      if (state === 'completed') return base(id, state, { order_reference: '#1003', poll_after_seconds: null, ...paid });
+      return base(id, state);
+    }
     case 'unknown_state':
       return base(id, 'some_future_state');
     case 'expired':
@@ -251,6 +300,19 @@ function createFixtures({ now } = {}) {
         const given = addressGiven.get(key);
         if (given && given.digest !== digest) return { kind: 'conflict' };
         if (!given) addressGiven.set(key, { digest, at: clock() / 1000 });
+        return { kind: 'accepted', purchase: fixturePurchase(claims, { now: clock(), accepted: acceptedFor(claims) }) };
+      },
+      // Same answers as the backend's card-choice write: the same card again is fine, another one is closed.
+      async submitCardChoice(claims, handle) {
+        if (scenarioForId(claims && claims.purchaseId) !== 'card_choice') return { kind: 'closed', code: 'card_choice_closed' };
+        // As the backend's gate: no card before the approval step's consent (nothing kept).
+        if (!acceptedFor(claims).has('approval')) return { kind: 'consent_required' };
+        const card = FIXTURE_CARDS.find((c) => fixtureCardHandle(claims.purchaseId, c.id) === handle);
+        if (!card) return { kind: 'stale' };
+        const key = addressKey(claims);
+        const given = cardConfirmed.get(key);
+        if (given && given.cardId !== card.id) return { kind: 'closed', code: 'card_choice_closed' };
+        if (!given) cardConfirmed.set(key, { cardId: card.id, at: clock() / 1000 });
         return { kind: 'accepted', purchase: fixturePurchase(claims, { now: clock(), accepted: acceptedFor(claims) }) };
       },
     }),
