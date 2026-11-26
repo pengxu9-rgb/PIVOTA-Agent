@@ -261,11 +261,14 @@ last4, added_at, selected}]}`: the buyer's ACTIVE cards, newest first, the newes
 named) selected. Only display attributes and a per-purchase handle reach the gateway, never the partner's card id.
 
 **The view** (`view.js`, `cardChoiceFor`): with `AGENPAS_CARD_PICKER_ENABLED` on, a `locking` purchase on the A2A
-rail, not held, whose `card_choice` checks out (1..10 cards, each handle 24 hex and unique, exactly one selected, an
-unconfirmed choice's deadline still ahead) is the `choose_card` screen, and the view carries
+rail, not held, whose `card_choice` checks out (1..10 cards, each handle 24 hex and unique, each with four digits,
+exactly one selected, an unconfirmed choice's deadline still ahead) is the `choose_card` screen, and the view carries
 `card_choice = {confirmed, cards: [{handle, label, last4, added_on, selected}]}` (the network as a label from the fixed
-list, else "Card"; `added_on` a date or null). Anything else: no member, and the screen is "Confirming your total" as
-before. The approval terms are not offered on this screen: they come on the approval screen.
+list, else "Card"; `added_on` a real date or null). Anything else: no member, and the screen is "Confirming your total"
+as before. **The approval terms come first**: the backend takes the card only after the buyer accepted the approval
+step's terms, so an unaccepted step marks the choice `consent_pending` and the screen offers the terms (Approve
+appears once they are accepted); when they cannot be offered here (the consent flag off, an incomplete or unavailable
+block, no block), the step is "not available right now", never an Approve the backend would refuse.
 
 **The page**: "Approve your purchase", the card it will pay with ("Visa ending 4242 · Added Nov 20") and, with more
 than one card, **Change**, which opens the list in place ("Choose a card", one radio per card, "Use this card"). The
@@ -275,8 +278,12 @@ ready…" while the backend asks for the token, and the approval screen's button
 `card_choice_stale` answer is retried with the same card, twice, 1.5 s apart (most often the backend's worker held the
 purchase for a moment); then "Your saved cards changed. Check the card, then approve again."
 
-**The write** goes on only when the gateway's own fresh read shows the choice with that card (a confirmed choice: only
-its own card again); the backend's compare-and-swap then decides. Adding a new card from Change is a later step.
+**The write** has the consent POST's cross-site checks (the exact public Origin; Sec-Fetch-Site same-origin when sent;
+else 403) and goes on only when the gateway's own fresh read shows the choice with that card and its terms accepted (a
+confirmed choice: only its own card again); the backend's consent check and compare-and-swap then decide. As for the
+consent, a holder of the link with a script of its own (the agent holds the link too) can still send it: the backend's
+checks and the passkey on the partner's page are the rest. A pick that is no longer on the list is dropped with "Your
+saved cards changed", never replaced silently by another card. Adding a new card from Change is a later step.
 
 ## Shipping address
 

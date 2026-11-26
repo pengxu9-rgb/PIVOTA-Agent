@@ -53,6 +53,14 @@ const NOW = Date.UTC(2026, 10, 26, 12, 0, 0);
 const CLAIMS = Object.freeze({ purchaseId: PID, agentId: 'agent_fixture_1', userRef: 'usr_fixtureFixtureFixture', aud: AUD });
 const ENV_ON = Object.freeze({
   AGENPAS_ENABLED: '1', AGENPAS_LINK_SECRET: SECRET, AGENPAS_PUBLIC_BASE_URL: AUD, AGENPAS_CARD_PICKER_ENABLED: '1',
+  AGENPAS_CONSENT_ENABLED: '1',
+});
+// The backend's consent block for the approval step (its gate is always on with the card choice).
+const LEGAL = { terms_url: 'https://pivota.cc/terms', privacy_url: 'https://pivota.cc/privacy', terms_version: 't-1', privacy_version: 'p-1' };
+const ACCEPTED = Object.freeze({ required: true, available: true, satisfied: true, step: 'approval', ...LEGAL });
+const OFFERED = Object.freeze({
+  required: true, available: true, satisfied: false, step: 'approval', ...LEGAL,
+  offer: { id: 'fixtureoffer0000000000000001', issued_at: '2026-11-26T12:00:00Z' },
 });
 const ENV_OFF = Object.freeze({ ...ENV_ON, AGENPAS_CARD_PICKER_ENABLED: undefined });
 const H1 = 'a'.repeat(24);
@@ -76,11 +84,14 @@ function body(state = 'locking', extra = {}) {
     totals: { currency: 'USD', our_price_minor: 1800, quoted_total_minor: 2349 }, poll_after_seconds: 5,
     detail: { id: PID, merchant_domain: 'merchant.example', product_name: 'Sample Lip Gloss', quantity: 1 },
     card_choice: choice(),
+    consent: ACCEPTED,
     ...extra,
   };
 }
 
-const view = (b, over = {}) => projectPurchaseView(b, { purchaseId: PID, now: NOW, cardPicker: true, ...over });
+const view = (b, over = {}) => projectPurchaseView(b, {
+  purchaseId: PID, now: NOW, cardPicker: true, consentEnabled: true, legalHosts: ['pivota.cc'], ...over,
+});
 
 function fakeBackend({ read = body(), submit } = {}) {
   const calls = [];
@@ -103,8 +114,11 @@ function app({ env = ENV_ON, reader = fakeBackend(), logger, limits } = {}) {
 }
 
 const token = () => mintLinkToken({ ...CLAIMS, secret: SECRET, now: NOW });
-const post = (a, payload = { handle: H2 }, t = token()) => request(a).post(`/agenpas/api/p/${PID}/card-choice`)
-  .set('X-Agenpas-Link', t).set('Content-Type', 'application/json').send(JSON.stringify(payload));
+const post = (a, payload = { handle: H2 }, t = token(), origin = AUD) => {
+  const r = request(a).post(`/agenpas/api/p/${PID}/card-choice`).set('X-Agenpas-Link', t).set('Content-Type', 'application/json');
+  if (origin) r.set('Origin', origin);
+  return r.send(JSON.stringify(payload));
+};
 
 // ---- the view --------------------------------------------------------------------------------------------------
 
@@ -118,7 +132,30 @@ test('view: a locked purchase with the backend\'s choice is the choice screen, c
       { handle: H2, label: 'Visa', last4: '1881', added_on: '2026-10-02', selected: false },
     ],
   });
-  assert.equal(v.consent, undefined);
+  assert.equal(v.consent, null);  // accepted: nothing to offer
+});
+
+test('view: the approval terms first; when they cannot be offered here the step is "not available", never Approve', () => {
+  const pending = view(body('locking', { consent: OFFERED }));
+  assert.equal(pending.screen, 'choose_card');
+  assert.equal(pending.card_choice.consent_pending, true);
+  assert.equal(pending.consent.step, 'approval');
+  for (const consent of [undefined, { ...OFFERED, available: false }, { ...OFFERED, offer: undefined }]) {
+    const v = view(body('locking', { consent }));
+    assert.equal(v.screen, 'unavailable', JSON.stringify(consent));
+    assert.equal(v.card_choice, undefined);
+  }
+  // The flag for the terms off: nothing can be accepted here, so nothing can be approved either.
+  assert.equal(view(body('locking', { consent: OFFERED }), { consentEnabled: false }).screen, 'unavailable');
+  // Accepted: Approve, no terms.
+  const ok = view(body());
+  assert.equal(ok.card_choice.consent_pending, undefined);
+});
+
+test('view: a card without four digits, or a date that is no date, refuses the whole choice', () => {
+  assert.equal(view(body('locking', { card_choice: choice({ cards: [{ ...choice().cards[0], last4: null }, choice().cards[1]] }) })).screen, 'confirming_total');
+  const odd = view(body('locking', { card_choice: choice({ cards: [{ ...choice().cards[0], added_at: '2026-13-05' }, choice().cards[1]] }) }));
+  assert.equal(odd.card_choice.cards[0].added_on, null);
 });
 
 test('view: the flag off, another rail, a held purchase or another state shows no choice at all', () => {
@@ -128,6 +165,11 @@ test('view: the flag off, another rail, a held purchase or another state shows n
   const { card_choice: _ignored, ...plain } = body();
   assert.deepEqual(off, projectPurchaseView(plain, { purchaseId: PID, now: NOW }));
   assert.equal(view(body('locking', { rail: 'reap', rail_purchase_id: 'rp_0123456789abcdef01234567' }), { purchaseId: 'rp_0123456789abcdef01234567' }).card_choice, undefined);
+  // A purchase whose rail cannot be told: no choice (only the A2A rail offers one).
+  const { rail: _r, ...railless } = body();
+  const door = 'pp_aaaaaaaaaaaaaaaaaaaaaaaa';
+  const unknown = { ...railless, rail_purchase_id: undefined, detail: { ...railless.detail, id: undefined } };
+  assert.equal(view(unknown, { purchaseId: door }).card_choice, undefined);
   const held = body('locking', { detail: { ...body().detail, last_error_code: 'vic_order_outcome_unknown' } });
   assert.notEqual(view(held).screen, 'choose_card');
   assert.equal(view(body('routing')).card_choice, undefined);
@@ -154,13 +196,13 @@ test('view: one bad card, two selected, none selected, too many or a passed dead
   }
 });
 
-test('view: an odd network is "Card", odd last four and dates drop to null, and a confirmed choice needs no deadline', () => {
+test('view: an odd network is "Card", an odd date drops to null, and a confirmed choice needs no deadline', () => {
   const v = view(body('locking', { card_choice: choice({
     confirmed: true, expires_at: null,
-    cards: [{ handle: H1, network: '<b>bad</b>', last4: '12345', added_at: 'soon', selected: true }],
+    cards: [{ handle: H1, network: '<b>bad</b>', last4: '1234', added_at: 'soon', selected: true }],
   }) }));
   assert.equal(v.screen, 'choose_card');
-  assert.deepEqual(v.card_choice, { confirmed: true, cards: [{ handle: H1, label: 'Card', last4: null, added_on: null, selected: true }] });
+  assert.deepEqual(v.card_choice, { confirmed: true, cards: [{ handle: H1, label: 'Card', last4: '1234', added_on: null, selected: true }] });
 });
 
 test('view: only the top-level card_choice counts, never one under detail', () => {
@@ -199,6 +241,30 @@ test('POST: a handle the read does not offer, or another card once confirmed, is
   }
 });
 
+test('POST: the exact public Origin, and Sec-Fetch-Site same-origin when sent (403, nothing sent)', async () => {
+  for (const [origin, site] of [[null, undefined], ['https://elsewhere.example', undefined], [AUD, 'cross-site']]) {
+    const reader = fakeBackend();
+    let r = request(app({ reader })).post(`/agenpas/api/p/${PID}/card-choice`).set('X-Agenpas-Link', token())
+      .set('Content-Type', 'application/json');
+    if (origin) r = r.set('Origin', origin);
+    if (site) r = r.set('Sec-Fetch-Site', site);
+    const res = await r.send(JSON.stringify({ handle: H2 }));
+    assert.equal(res.status, 403);
+    assert.equal(reader.calls.length, 0);
+  }
+});
+
+test('POST: before the approval terms nothing is sent on (409 consent_required); the backend\'s own 409 maps the same', async () => {
+  const reader = fakeBackend({ read: body('locking', { consent: OFFERED }) });
+  const res = await post(app({ reader }));
+  assert.equal(res.status, 409);
+  assert.equal(res.body.error, 'consent_required');
+  assert.equal(reader.calls.filter((c) => c.op === 'submit').length, 0);
+  const backendSays = await post(app({ reader: fakeBackend({ submit: () => ({ kind: 'consent_required' }) }) }));
+  assert.equal(backendSays.status, 409);
+  assert.equal(backendSays.body.error, 'consent_required');
+});
+
 test('POST: the confirmed card again is passed on (the backend answers the same)', async () => {
   const reader = fakeBackend({ read: body('locking', { card_choice: choice({ confirmed: true, expires_at: null }) }) });
   const res = await post(app({ reader }), { handle: H1 });
@@ -215,10 +281,10 @@ test('POST: exactly {handle} of the right shape (400), JSON only (415), the link
   }
   const reader = fakeBackend();
   const plain = await request(app({ reader })).post(`/agenpas/api/p/${PID}/card-choice`).set('X-Agenpas-Link', token())
-    .set('Content-Type', 'text/plain').send(JSON.stringify({ handle: H1 }));
+    .set('Origin', AUD).set('Content-Type', 'text/plain').send(JSON.stringify({ handle: H1 }));
   assert.equal(plain.status, 415);
   const noLink = await request(app({ reader })).post(`/agenpas/api/p/${PID}/card-choice`)
-    .set('Content-Type', 'application/json').send(JSON.stringify({ handle: H1 }));
+    .set('Origin', AUD).set('Content-Type', 'application/json').send(JSON.stringify({ handle: H1 }));
   assert.equal(noLink.status, 404);
   assert.equal(reader.calls.length, 0);
 });
@@ -319,6 +385,7 @@ test('writer: one POST to the internal route with the internal key, the owner an
 test('writer: the backend\'s re-wrapped 409s, 404 and 5xx outcomes', async () => {
   const mk = (answer) => createBackendPurchaseReader({ baseUrl: 'https://b.example', internalKey: () => 'k', fetchImpl: stubFetch(answer).fetchImpl });
   assert.deepEqual(await mk({ status: 409, body: { detail: { error: 'card_choice_stale' } } }).submitCardChoice(CLAIMS, H1), { kind: 'stale' });
+  assert.deepEqual(await mk({ status: 409, body: { detail: { error: 'consent_required' } } }).submitCardChoice(CLAIMS, H1), { kind: 'consent_required' });
   assert.deepEqual(await mk({ status: 409, body: { detail: { error: 'card_choice_closed' } } }).submitCardChoice(CLAIMS, H1),
     { kind: 'closed', code: 'card_choice_closed' });
   assert.deepEqual(await mk({ status: 409, body: { detail: { error: 'card_choice_unavailable' } } }).submitCardChoice(CLAIMS, H1),
@@ -344,10 +411,18 @@ test('fixture card_choice: the choice, the other card confirmed, then the approv
   const t = new URLSearchParams(loc.hash.slice(1)).get('t');
   const get = () => request(a, 'localhost:4000').get(`/agenpas/api/p/${id}`).set('X-Agenpas-Link', t);
   const send = (handle) => request(a, 'localhost:4000').post(`/agenpas/api/p/${id}/card-choice`).set('X-Agenpas-Link', t)
-    .set('Content-Type', 'application/json').send(JSON.stringify({ handle }));
+    .set('Origin', 'http://localhost:4000').set('Content-Type', 'application/json').send(JSON.stringify({ handle }));
   const first = await get();
   assert.equal(first.body.screen, 'choose_card');
-  const [newest, older] = first.body.card_choice.cards;
+  assert.equal(first.body.card_choice.consent_pending, true);
+  assert.equal((await send(first.body.card_choice.cards[1].handle)).status, 409);  // the terms first
+  const agreed = await request(a, 'localhost:4000').post(`/agenpas/api/p/${id}/consent`).set('X-Agenpas-Link', t)
+    .set('Origin', 'http://localhost:4000').set('Content-Type', 'application/json')
+    .send(JSON.stringify({ step: 'approval', offer_id: first.body.consent.offer.id, issued_at: first.body.consent.offer.issued_at }));
+  assert.equal(agreed.status, 200, JSON.stringify(agreed.body));
+  const ready = await get();
+  assert.equal(ready.body.card_choice.consent_pending, undefined);
+  const [newest, older] = ready.body.card_choice.cards;
   assert.deepEqual([newest.last4, newest.selected, older.last4, older.selected], ['4242', true, '1881', false]);
   const chosen = await send(older.handle);
   assert.equal(chosen.status, 200);

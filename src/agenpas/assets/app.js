@@ -105,6 +105,8 @@
     cardMessage: null,
     cardRetries: 0,
     cardConfirmed: false,
+    // The radio that had the keyboard before a re-render (a handle): it gets the focus back.
+    cardFocus: null,
   };
 
   // ---- tiny DOM helpers ----------------------------------------------------------------------------------------
@@ -651,12 +653,27 @@
     return m ? 'Added ' + MONTHS[Number(m[2]) - 1] + ' ' + Number(m[3]) : null;
   }
 
+  function hasCard(choice, handle) {
+    return choice.cards.some(function (c) { return c.handle === handle; });
+  }
+
   function selectedCard(choice) {
     var picked = null;
     choice.cards.forEach(function (c) { if (!choice.confirmed && ui.cardDraft && c.handle === ui.cardDraft) picked = c; });
     if (picked) return picked;
     choice.cards.forEach(function (c) { if (!picked && c.selected) picked = c; });
     return picked;
+  }
+
+  // The buyer's pick is no longer on the list (a card removed, the list changed): never fall back to another card
+  // without saying so.
+  function forgetVanishedPick(choice) {
+    if (choice.confirmed) return;
+    if (ui.cardDraft && !hasCard(choice, ui.cardDraft)) {
+      ui.cardDraft = null;
+      ui.cardMessage = 'Your saved cards changed. Check the card, then approve again.';
+    }
+    if (ui.cardPickerDraft && !hasCard(choice, ui.cardPickerDraft)) ui.cardPickerDraft = null;
   }
 
   function cardPicker(choice, current) {
@@ -671,7 +688,11 @@
       radio.name = 'card';
       radio.value = c.handle;
       radio.checked = on;
-      radio.addEventListener('change', function () { ui.cardPickerDraft = c.handle; render(); });
+      radio.addEventListener('change', function () { ui.cardPickerDraft = c.handle; ui.cardFocus = c.handle; render(); });
+      if (ui.cardFocus === c.handle) {
+        ui.cardFocus = null;
+        setTimeout(function () { radio.focus(); }, 0);
+      }
       var text = el('span', 'card-option-text');
       append(text, el('span', 'card-option-label', cardLabel(c)));
       var added = cardAdded(c);
@@ -702,6 +723,9 @@
 
   function chooseCardCard(view) {
     var choice = view.card_choice;
+    forgetVanishedPick(choice);
+    // A choice still open: whatever an earlier approval on this page did, this one is not confirmed yet.
+    if (!choice.confirmed) ui.cardConfirmed = false;
     var current = selectedCard(choice);
     var quoted = money(view.amounts && view.amounts.quoted_total_minor, view.currency);
     var card = el('section', 'card step');
@@ -745,6 +769,11 @@
       note.setAttribute('role', 'alert');
       card.appendChild(note);
     }
+    // The approval terms first: the card is part of what the buyer approves. Approve appears once they are accepted.
+    if (choice.consent_pending) {
+      if (view.consent) card.appendChild(consentBlock(view));
+      return card;
+    }
     var approve = el('button', 'btn btn-primary', ui.cardBusy ? 'Approving…' : quoted ? 'Approve ' + quoted : 'Approve');
     approve.type = 'button';
     approve.disabled = ui.cardBusy;
@@ -774,13 +803,21 @@
         ui.cardRetries = 0;
         ui.cardPickerOpen = false;
         ui.view = r.body;
-        ui.lastJson = JSON.stringify(r.body);
+        ui.lastJson = viewKey(r.body);
         render();
         if (r.body.terminal) { stop(); forgetToken(); return; }
         schedule(r.body.poll_after_seconds);
         return;
       }
       var refusal = r.status === 409 && r.body && typeof r.body.error === 'string' ? r.body.error : null;
+      if (refusal === 'consent_required') {
+        // The terms are not on record (yet, or any more): read again, and the page offers them first.
+        ui.cardRetries = 0;
+        ui.cardMessage = null;
+        pollNow();
+        render();
+        return;
+      }
       if (refusal === 'card_choice_stale' && ui.cardRetries < CARD_CHOICE_RETRIES) {
         // Most often the worker is looking at the purchase this very moment: the same card again, shortly.
         ui.cardRetries += 1;

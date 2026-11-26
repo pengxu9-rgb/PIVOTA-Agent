@@ -26,8 +26,9 @@ const SCENARIOS = Object.freeze({
   // An A2A purchase whose address form is consent-gated (AGENPAS_CONSENT_ENABLED and AGENPAS_COLLECT_SHIPPING): the
   // terms first, then the form, then the card step.
   address_consent: { id: 'ap_000000000000000000000008' },
-  // An A2A returning buyer with two saved cards (AGENPAS_CARD_PICKER_ENABLED): the order is locked and waits for the
-  // buyer to approve with the newest card or pick the other; then the approval page, then the order.
+  // An A2A returning buyer with two saved cards (AGENPAS_CARD_PICKER_ENABLED and AGENPAS_CONSENT_ENABLED): the order is
+  // locked and waits; the approval terms first, then the buyer approves with the newest card or picks the other; then
+  // the approval page, then the order.
   card_choice: { id: 'ap_000000000000000000000009' },
 });
 
@@ -207,8 +208,10 @@ function fixturePurchase(claims, { now, accepted } = {}) {
     }
     case 'card_choice': {
       const confirmed = cardConfirmed.get(addressKey(claims));
+      const steps = accepted instanceof Map ? accepted : new Map();
       if (!confirmed) {
         return base(id, 'locking', {
+          consent: fixtureConsentBlock('approval', steps.has('approval'), nowMs),
           card_choice: {
             confirmed: false,
             expires_at: new Date((claims.iat + 30 * 60) * 1000).toISOString(),
@@ -224,6 +227,7 @@ function fixturePurchase(claims, { now, accepted } = {}) {
       const paid = { payment_card: { network: card.network, last4: card.last4 } };
       if (state === 'locking') {
         return base(id, state, {
+          consent: fixtureConsentBlock('approval', true, nowMs),
           card_choice: {
             confirmed: true, expires_at: null,
             cards: FIXTURE_CARDS.map((c) => ({
@@ -233,7 +237,9 @@ function fixturePurchase(claims, { now, accepted } = {}) {
           },
         });
       }
-      if (state === 'awaiting_buyer_authorization') return base(id, state, { next_action: action('approval', claims.iat), ...paid });
+      if (state === 'awaiting_buyer_authorization') {
+        return base(id, state, { next_action: action('approval', claims.iat), consent: fixtureConsentBlock('approval', true, nowMs), ...paid });
+      }
       if (state === 'completed') return base(id, state, { order_reference: '#1003', poll_after_seconds: null, ...paid });
       return base(id, state);
     }
@@ -299,6 +305,8 @@ function createFixtures({ now } = {}) {
       // Same answers as the backend's card-choice write: the same card again is fine, another one is closed.
       async submitCardChoice(claims, handle) {
         if (scenarioForId(claims && claims.purchaseId) !== 'card_choice') return { kind: 'closed', code: 'card_choice_closed' };
+        // As the backend's gate: no card before the approval step's consent (nothing kept).
+        if (!acceptedFor(claims).has('approval')) return { kind: 'consent_required' };
         const card = FIXTURE_CARDS.find((c) => fixtureCardHandle(claims.purchaseId, c.id) === handle);
         if (!card) return { kind: 'stale' };
         const key = addressKey(claims);

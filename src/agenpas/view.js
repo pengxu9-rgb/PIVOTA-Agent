@@ -733,13 +733,14 @@ function paymentCardFor(raw, screen) {
 // The backend's top-level `card_choice = {confirmed, expires_at, cards: [{handle, network, last4, added_at, selected}]}`
 // (pivota-backend docs/agent_purchases_routes.md, behind its AGENPAS_CARD_PICKER_ENABLED): an A2A purchase whose order is
 // locked waits for the buyer to confirm the card BEFORE any token is asked for. Read only from the top level (never
-// `detail`). Every card is checked again and never repaired: one bad card, two selected, or a deadline already passed,
-// and there is no choice at all (the page then shows "Confirming your total" as before). `handle` names the card for
-// this purchase only (never the rail's card id); the network becomes a label from the fixed list above; `added_on` is a
-// calendar date (YYYY-MM-DD) or null.
+// `detail`). Every card is checked again and never repaired: one bad card (a handle out of shape, or no four digits:
+// two cards the buyer cannot tell apart are no choice), two selected, or a deadline already passed, and there is no
+// choice at all (the page then shows "Confirming your total" as before). `handle` names the card for this purchase only
+// (never the rail's card id); the network becomes a label from the fixed list above; `added_on` is a real calendar
+// date (YYYY-MM-DD) or null.
 const CARD_HANDLE_RE = /^[0-9a-f]{24}$/;
 const CARD_CHOICE_MAX = 10;
-const CARD_ADDED_RE = /^(\d{4})-(\d{2})-(\d{2})(?:[T ]|$)/;
+const CARD_ADDED_RE = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])(?:[T ]|$)/;
 
 function cardChoiceFor(raw, nowMs) {
   if (!isPlainObject(raw) || !Array.isArray(raw.cards)) return null;
@@ -749,7 +750,8 @@ function cardChoiceFor(raw, nowMs) {
   for (const c of raw.cards) {
     if (!isPlainObject(c) || typeof c.handle !== 'string' || !CARD_HANDLE_RE.test(c.handle) || seen.has(c.handle)) return null;
     seen.add(c.handle);
-    const last4 = typeof c.last4 === 'string' && LAST4_RE.test(c.last4) ? c.last4 : null;
+    if (typeof c.last4 !== 'string' || !LAST4_RE.test(c.last4)) return null;
+    const last4 = c.last4;
     const added = typeof c.added_at === 'string' ? CARD_ADDED_RE.exec(c.added_at) : null;
     cards.push({
       handle: c.handle,
@@ -996,14 +998,23 @@ function buildView(body, {
   }
   if (unavailable && (screen === 'add_card' || screen === 'approve')) screen = 'unavailable';
   // THE CARD CHOICE: only while the total is being confirmed (the backend's `locking`: the order is locked, nothing is
-  // minted), never on the rp_ rail, never while held. Unconfirmed, the buyer picks and approves; confirmed, the page
-  // shows the card while the secure page is got ready.
-  const cardChoice = cardPicker && screen === 'confirming_total' && rail !== 'reap' && !held
+  // minted), only on the A2A rail, never while held. Unconfirmed, the buyer picks and approves; confirmed, the page shows
+  // the card while the secure page is got ready. The backend takes the card only after the approval step's terms (its
+  // consent gate): unaccepted, they are offered here first (`consent_pending`), or, when they cannot be offered, the
+  // step is "not available right now". Never an Approve the backend would refuse.
+  let cardChoice = cardPicker && screen === 'confirming_total' && rail === 'a2a' && !held
     ? cardChoiceFor(src.card_choice, nowMs) : null;
+  if (cardChoice && !cardChoice.confirmed && !satisfiedFor('approval')) {
+    if (consentEnabled && isOfferable(block, 'approval')) cardChoice = { ...cardChoice, consent_pending: true };
+    else {
+      cardChoice = null;
+      screen = 'unavailable';
+    }
+  }
   if (cardChoice) screen = 'choose_card';
   const shippingConsentScreen = shippingOfferable && screen === 'shipping_address';
-  // Not the card choice: its approval terms come on the approval screen, once the card is confirmed.
-  const consentScreen = screen === 'add_card' || screen === 'approve' || screen === 'confirming_total' || shippingConsentScreen;
+  const consentScreen = screen === 'add_card' || screen === 'approve' || screen === 'confirming_total'
+    || screen === 'choose_card' || shippingConsentScreen;
   const offeredStep = shippingConsentScreen ? SHIPPING_STEP : consentStep;
   let consent = null;
   let record = null;

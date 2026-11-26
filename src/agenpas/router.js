@@ -30,9 +30,11 @@
  *                                                  409 address_not_requested when the gateway's read shows no form;
  *                                                  409 address_not_taken for the backend's other 409s.
  *   POST /agenpas/api/p/:purchaseId/card-choice   ONLY while AGENPAS_CARD_PICKER_ENABLED is on: the card the buyer
- *                                                  approves with, {handle} (JSON, token in `X-Agenpas-Link`). 409
+ *                                                  approves with, {handle} (JSON, token in `X-Agenpas-Link`, exact
+ *                                                  Origin, Sec-Fetch-Site same-origin when sent, or 403). 409
  *                                                  card_choice_not_offered when the gateway's own read shows no such
- *                                                  card; 409 card_choice_stale / card_choice_closed from the backend.
+ *                                                  card; 409 consent_required before the approval terms; 409
+ *                                                  card_choice_stale / card_choice_closed from the backend.
  *
  * DARK BY DEFAULT. While AGENPAS_ENABLED is off every request is handed straight to `next()`, so an /agenpas path
  * answers exactly what it answered before this module existed (the app's normal not-found). The same happens while
@@ -680,6 +682,18 @@ function createAgenpasRouter(deps = {}) {
     const purchaseId = req.params.purchaseId;
     if (!ipBuckets.allow(`ip:${digest(clientIpFromRequest(req) || 'unknown')}`)) return tooMany(res, 'card_choice', 'rate_limited_ip');
     if (!PURCHASE_ID_RE.test(purchaseId)) return res.status(404).json({ error: 'link_invalid' });
+    // The consent POST's cross-site defence (the card cannot be changed once its token exists): the exact public Origin,
+    // and Sec-Fetch-Site same-origin when sent. A holder of the link with a script of its own can still send it, as for
+    // the consent (docs/agenpas.md): the backend's own checks, and the passkey on the partner's page, are the rest.
+    if (firstString(req.headers.origin) !== config.publicBaseUrl(env)) {
+      logRefusal({ surface: 'card_choice', reason: 'origin' });
+      return res.status(403).json({ error: 'forbidden' });
+    }
+    const fetchSite = req.headers['sec-fetch-site'];
+    if (fetchSite !== undefined && firstString(fetchSite) !== 'same-origin') {
+      logRefusal({ surface: 'card_choice', reason: 'sec_fetch_site' });
+      return res.status(403).json({ error: 'forbidden' });
+    }
     if (!req._body && !isJsonContentType(req)) {
       logRefusal({ surface: 'card_choice', reason: 'unsupported_media_type' });
       return res.status(415).json({ error: 'unsupported_media_type' });
@@ -723,6 +737,11 @@ function createAgenpasRouter(deps = {}) {
       logRefusal({ surface: 'card_choice', reason: 'not_offered' });
       return res.status(409).json({ error: 'card_choice_not_offered' });
     }
+    // The approval terms first (the backend refuses the card without them): nothing is sent on.
+    if (choice.consent_pending) {
+      logRefusal({ surface: 'card_choice', reason: 'consent_required' });
+      return res.status(409).json({ error: 'consent_required' });
+    }
     let answer;
     try {
       answer = reader && typeof reader.submitCardChoice === 'function'
@@ -741,6 +760,10 @@ function createAgenpasRouter(deps = {}) {
     if (answer && answer.kind === 'stale') {
       logRefusal({ surface: 'card_choice', reason: 'stale' });
       return res.status(409).json({ error: 'card_choice_stale' });
+    }
+    if (answer && answer.kind === 'consent_required') {
+      logRefusal({ surface: 'card_choice', reason: 'backend_consent_required' });
+      return res.status(409).json({ error: 'consent_required' });
     }
     if (answer && answer.kind === 'closed') {
       logRefusal({ surface: 'card_choice', reason: 'closed' });

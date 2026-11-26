@@ -44,10 +44,11 @@
  *   POST {PIVOTA_API_BASE}/agent/internal/commerce/purchases/{purchase_id}/card-choice
  *     body: {handle}   (a card's handle from the read's `card_choice.cards`)
  *   200 -> the unified view            409 card_choice_stale -> the cards changed or the worker holds the purchase
+ *   409 consent_required -> the approval step's terms are not accepted yet (nothing written)
  *   409 card_choice_closed / card_choice_unavailable / any other 409 -> closed (nothing to choose here any more)
  *   404 -> not that agent's
  *
- * Outcomes: accepted {purchase} | stale | closed {code} | not_found | unavailable {code}.
+ * Outcomes: accepted {purchase} | stale | consent_required | closed {code} | not_found | unavailable {code}.
  */
 
 const { PURCHASE_ID_RE } = require('./linkToken');
@@ -294,6 +295,10 @@ function createBackendPurchaseReader(deps = {}) {
       if (reason === 'card_choice_stale') {
         log('info', { op: 'card_choice', outcome: 'stale', http_status: status });
         return { kind: 'stale' };
+      }
+      if (reason === 'consent_required') {
+        log('info', { op: 'card_choice', outcome: 'consent_required', http_status: status });
+        return { kind: 'consent_required' };
       }
       const code = typeof reason === 'string' && /^[a-z_]{1,48}$/.test(reason) ? reason : 'unnamed';
       log('info', { op: 'card_choice', outcome: 'closed', code, http_status: status });
