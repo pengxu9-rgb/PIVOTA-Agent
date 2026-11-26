@@ -670,20 +670,24 @@
 
   // The buyer's pick is no longer on the list (a card removed, the list changed): never fall back to another card
   // without saying so.
+  // "Add a new card" in the picker: a pick of its own (never a card handle, which is 24 hex).
+  var NEW_CARD = 'new';
+
   function forgetVanishedPick(choice) {
     if (choice.confirmed) return;
-    if (ui.cardDraft && !hasCard(choice, ui.cardDraft)) {
+    if (ui.cardDraft && ui.cardDraft !== NEW_CARD && !hasCard(choice, ui.cardDraft)) {
       ui.cardDraft = null;
       ui.cardMessage = 'Your saved cards changed. Check the card, then approve again.';
     }
-    if (ui.cardPickerDraft && !hasCard(choice, ui.cardPickerDraft)) ui.cardPickerDraft = null;
+    if (ui.cardPickerDraft && ui.cardPickerDraft !== NEW_CARD && !hasCard(choice, ui.cardPickerDraft)) ui.cardPickerDraft = null;
   }
 
   function cardPicker(choice, current) {
     var box = el('fieldset', 'card-picker');
     append(box, el('legend', null, 'Choose a card'));
-    var draft = ui.cardPickerDraft || current.handle;
-    choice.cards.forEach(function (c) {
+    var draft = ui.cardPickerDraft || (ui.cardDraft === NEW_CARD ? NEW_CARD : current.handle);
+    var options = choice.cards.concat([{ handle: NEW_CARD, label: 'Add a new card', last4: null, added_on: null }]);
+    options.forEach(function (c) {
       var on = c.handle === draft;
       var option = el('label', on ? 'card-option selected' : 'card-option');
       var radio = el('input');
@@ -697,13 +701,13 @@
         setTimeout(function () { radio.focus(); }, 0);
       }
       var text = el('span', 'card-option-text');
-      append(text, el('span', 'card-option-label', cardLabel(c)));
-      var added = cardAdded(c);
+      append(text, el('span', 'card-option-label', c.handle === NEW_CARD ? c.label : cardLabel(c)));
+      var added = c.handle === NEW_CARD ? "On our payment partner's secure page" : cardAdded(c);
       if (added) append(text, el('span', 'fine', added));
       append(option, radio, text);
       box.appendChild(option);
     });
-    var use = el('button', 'btn btn-primary', 'Use this card');
+    var use = el('button', 'btn btn-primary', draft === NEW_CARD ? 'Add a new card' : 'Use this card');
     use.type = 'button';
     use.addEventListener('click', function () {
       ui.cardDraft = ui.cardPickerDraft || current.handle;
@@ -731,6 +735,8 @@
     if (!choice.confirmed) ui.cardConfirmed = false;
     var current = selectedCard(choice);
     var quoted = money(view.amounts && view.amounts.quoted_total_minor, view.currency);
+    // The buyer picked "Add a new card" here (or already asked for it): the card row says so, and Approve adds it.
+    var wantsNew = !choice.confirmed && (ui.cardDraft === NEW_CARD || choice.new_card === true);
     var card = el('section', 'card step');
     append(card, el('h1', null, 'Approve your purchase'));
     append(card, el('p', 'muted', choice.confirmed
@@ -739,27 +745,29 @@
     var rows = el('dl', 'rows');
     var row = el('div', 'row card-row');
     var value = el('dd');
-    append(value, el('span', 'card-row-label', cardLabel(current)));
-    var added = !choice.confirmed && cardAdded(current);
+    append(value, el('span', 'card-row-label', wantsNew ? 'A new card' : cardLabel(current)));
+    var added = wantsNew ? "You'll add it on the secure page" : !choice.confirmed && cardAdded(current);
     if (added) append(value, el('span', 'fine card-row-added', added));
     append(row, el('dt', null, 'Pay with'), value);
-    if (!choice.confirmed && choice.cards.length > 1 && !ui.cardPickerOpen) {
+    // Change: with more than one card, or to add a new one (never once the new card is asked for).
+    if (!choice.confirmed && !choice.new_card && !ui.cardPickerOpen) {
       var change = el('button', 'btn-change', 'Change');
       change.type = 'button';
       change.setAttribute('aria-label', 'Change card');
       change.disabled = ui.cardBusy;
       change.addEventListener('click', function () {
         ui.cardPickerOpen = true;
-        ui.cardPickerDraft = current.handle;
+        ui.cardPickerDraft = ui.cardDraft === NEW_CARD ? NEW_CARD : current.handle;
         render();
       });
       row.appendChild(change);
     }
     // While the picker is open it IS the card line: the row comes back when a card is picked.
     if (!ui.cardPickerOpen || choice.confirmed) append(card, append(rows, row));
-    if (choice.confirmed) {
+    if (choice.confirmed || choice.new_card === true) {
       var prep = el('div', 'waiting');
-      append(prep, spinner(), el('p', 'waiting-text', 'Getting the secure page ready…'));
+      append(prep, spinner(), el('p', 'waiting-text', choice.new_card === true
+        ? 'Getting the secure card page ready…' : 'Getting the secure page ready…'));
       card.appendChild(prep);
       return card;
     }
@@ -777,15 +785,19 @@
       if (view.consent) card.appendChild(consentBlock(view));
       return card;
     }
-    var approve = el('button', 'btn btn-primary', ui.cardBusy ? 'Approving…' : quoted ? 'Approve ' + quoted : 'Approve');
+    var verb = wantsNew ? 'Add card and approve' : 'Approve';
+    var approve = el('button', 'btn btn-primary', ui.cardBusy ? 'Approving…' : quoted ? verb + ' ' + quoted : verb);
     approve.type = 'button';
     approve.disabled = ui.cardBusy;
-    approve.addEventListener('click', function () { submitCardChoice(current.handle); });
+    approve.addEventListener('click', function () {
+      submitCardChoice(wantsNew ? { new_card: true } : { handle: current.handle });
+    });
     card.appendChild(approve);
     return card;
   }
 
-  function submitCardChoice(handle) {
+  // `choice` is exactly what is sent: {handle} or {new_card: true}; a stale retry sends the same again.
+  function submitCardChoice(choice) {
     if (ui.cardBusy) return;
     ui.cardBusy = true;
     ui.cardMessage = null;
@@ -794,7 +806,7 @@
     fetch('/agenpas/api/p/' + match[1] + '/card-choice', {
       method: 'POST',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-Agenpas-Link': token },
-      body: JSON.stringify({ handle: handle }),
+      body: JSON.stringify(choice),
       cache: 'no-store',
       credentials: 'omit',
       referrerPolicy: 'no-referrer',
@@ -827,7 +839,7 @@
         ui.cardRetries += 1;
         ui.cardBusy = true;
         render();
-        setTimeout(function () { ui.cardBusy = false; submitCardChoice(handle); }, CARD_CHOICE_RETRY_MS);
+        setTimeout(function () { ui.cardBusy = false; submitCardChoice(choice); }, CARD_CHOICE_RETRY_MS);
         return;
       }
       ui.cardRetries = 0;

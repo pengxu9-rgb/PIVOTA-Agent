@@ -284,7 +284,15 @@ else 403) and goes on only when the gateway's own fresh read shows the choice wi
 confirmed choice: only its own card again); the backend's consent check and compare-and-swap then decide. As for the
 consent, a holder of the link with a script of its own (the agent holds the link too) can still send it: the backend's
 checks and the passkey on the partner's page are the rest. A pick that is no longer on the list is dropped with "Your
-saved cards changed", never replaced silently by another card. Adding a new card from Change is a later step.
+saved cards changed", never replaced silently by another card.
+
+**Add a new card** (the backend's migration 301): the picker's last option. The card row then reads "A new card ·
+You'll add it on the secure page" and the button "Add card and approve $X", which posts exactly `{"new_card": true}`
+(forwarded only while the choice is open and its terms accepted; never after a saved card was confirmed, and no saved
+card after it). The backend leaves the wait for the partner's card page, so the next screen is "Add a card" (its own
+terms first), then "Confirming your total" while the order is locked again, then the approval on the new card. The
+view carries `card_choice.new_card` while the backend has not opened the card page yet ("Getting the secure card page
+ready…").
 
 ## Shipping address
 
@@ -572,7 +580,8 @@ open http://localhost:<port>/agenpas/dev/start?scenario=happy   # redirects to /
 ```
 
 Scenarios: `card_choice` (with `AGENPAS_CARD_PICKER_ENABLED=1`: a returning buyer with two saved cards picks one and
-approves, then the approval page and the order on that card), `needs_address` (with `AGENPAS_COLLECT_SHIPPING=1`: the address form, then the card step), `address_consent` (with
+approves, then the approval page and the order on that card; or picks "Add a new card": the card page, then the
+approval on the new card ending 7777), `needs_address` (with `AGENPAS_COLLECT_SHIPPING=1`: the address form, then the card step), `address_consent` (with
 `AGENPAS_COLLECT_SHIPPING=1` and `AGENPAS_CONSENT_ENABLED=1`: the terms on the address screen, then the form, then the card
 step), `happy` (about a minute from routing to completed), `outcome_unknown`, `refused`, `declined`,
 `unknown_state`, `expired`, and `consent` (a Reap-rail purchase: add `AGENPAS_CONSENT_ENABLED=1`; the card page and then

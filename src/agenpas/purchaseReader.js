@@ -42,7 +42,7 @@
  * THE CARD CHOICE (docs/agenpas.md, "Card choice"), same authentication:
  *
  *   POST {PIVOTA_API_BASE}/agent/internal/commerce/purchases/{purchase_id}/card-choice
- *     body: {handle}   (a card's handle from the read's `card_choice.cards`)
+ *     body: {handle}   (a card's handle from the read's `card_choice.cards`), or {new_card: true} ("Add a new card")
  *   200 -> the unified view            409 card_choice_stale -> the cards changed or the worker holds the purchase
  *   409 consent_required -> the approval step's terms are not accepted yet (nothing written)
  *   409 card_choice_closed / card_choice_unavailable / any other 409 -> closed (nothing to choose here any more)
@@ -239,6 +239,7 @@ function createBackendPurchaseReader(deps = {}) {
     return { kind: 'unavailable', code: status === 200 ? 'malformed' : `http_${status}` };
   }
 
+  /** The card the buyer approves with (a handle), or `{ newCard: true }` for "Add a new card". */
   async function submitCardChoice(claims, handle) {
     const purchaseId = claims && claims.purchaseId;
     if (typeof purchaseId !== 'string' || !PURCHASE_ID_RE.test(purchaseId)) return { kind: 'not_found' };
@@ -266,7 +267,7 @@ function createBackendPurchaseReader(deps = {}) {
           Accept: 'application/json',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ handle }),
+        body: JSON.stringify(handle && typeof handle === 'object' && handle.newCard === true ? { new_card: true } : { handle }),
         signal: controller.signal,
         redirect: 'error',
       });

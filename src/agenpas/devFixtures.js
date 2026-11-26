@@ -38,6 +38,8 @@ const FIXTURE_CARDS = Object.freeze([
   Object.freeze({ id: 'fixture_card_newest', network: 'visa', last4: '4242', added_at: '2026-11-20T00:00:00Z' }),
   Object.freeze({ id: 'fixture_card_older', network: 'visa', last4: '1881', added_at: '2026-10-02T00:00:00Z' }),
 ]);
+// The card a buyer adds from "Add a new card" (dev only).
+const FIXTURE_NEW_CARD = Object.freeze({ id: 'fixture_card_new', network: 'visa', last4: '7777' });
 const fixtureCardHandle = (purchaseId, cardId) => crypto.createHash('sha256').update(`fixture:${purchaseId}:${cardId}`).digest('hex').slice(0, 24);
 
 // needs_address: which links have given their address (dev memory only; a digest, never the address itself).
@@ -221,6 +223,27 @@ function fixturePurchase(claims, { now, accepted } = {}) {
           },
         });
       }
+      if (confirmed.cardId === FIXTURE_NEW_CARD.id) {
+        // "Add a new card": the card page (its own terms first), then, once the terms are accepted and the card bound,
+        // the order is locked again and approved on the new card.
+        const boundFrom = steps.get('card_binding');
+        if (!boundFrom) {
+          return base(id, 'needs_payment_method', {
+            next_action: action('card_binding', claims.iat), consent: fixtureConsentBlock('card_binding', false, nowMs),
+          });
+        }
+        const sinceBound = Math.max(0, (nowMs - boundFrom) / 1000);
+        const newState = step(sinceBound, [[0, 'needs_payment_method'], [8, 'locking'], [11, 'awaiting_buyer_authorization'], [30, 'placing'], [35, 'completed']]);
+        const newPaid = { payment_card: { network: FIXTURE_NEW_CARD.network, last4: FIXTURE_NEW_CARD.last4 } };
+        if (newState === 'needs_payment_method') {
+          return base(id, newState, { next_action: action('card_binding', claims.iat), consent: fixtureConsentBlock('card_binding', true, nowMs) });
+        }
+        if (newState === 'awaiting_buyer_authorization') {
+          return base(id, newState, { next_action: action('approval', claims.iat), consent: fixtureConsentBlock('approval', true, nowMs), ...newPaid });
+        }
+        if (newState === 'completed') return base(id, newState, { order_reference: '#1004', poll_after_seconds: null, ...newPaid });
+        return base(id, newState);
+      }
       const since = Math.max(0, nowMs / 1000 - confirmed.at);
       const state = step(since, [[0, 'locking'], [3, 'awaiting_buyer_authorization'], [25, 'placing'], [30, 'completed']]);
       const card = FIXTURE_CARDS.find((c) => c.id === confirmed.cardId);
@@ -307,7 +330,8 @@ function createFixtures({ now } = {}) {
         if (scenarioForId(claims && claims.purchaseId) !== 'card_choice') return { kind: 'closed', code: 'card_choice_closed' };
         // As the backend's gate: no card before the approval step's consent (nothing kept).
         if (!acceptedFor(claims).has('approval')) return { kind: 'consent_required' };
-        const card = FIXTURE_CARDS.find((c) => fixtureCardHandle(claims.purchaseId, c.id) === handle);
+        const wantsNew = handle && typeof handle === 'object' && handle.newCard === true;
+        const card = wantsNew ? FIXTURE_NEW_CARD : FIXTURE_CARDS.find((c) => fixtureCardHandle(claims.purchaseId, c.id) === handle);
         if (!card) return { kind: 'stale' };
         const key = addressKey(claims);
         const given = cardConfirmed.get(key);
