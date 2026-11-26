@@ -58,7 +58,7 @@ class El {
   }
 }
 
-function harness({ hash = `#t=${TOKEN}`, answers = [] } = {}) {
+function harness({ hash = `#t=${TOKEN}`, answers = [], imageAnswers = [] } = {}) {
   const clock = { t: T0 };
   const timers = [];
   let nextId = 1;
@@ -99,7 +99,20 @@ function harness({ hash = `#t=${TOKEN}`, answers = [] } = {}) {
   class FakeDate extends Date {
     static now() { return clock.t; }
   }
+  const imageFetches = [];
+  const imageQueue = [...imageAnswers];
   const fetch = (url, init) => {
+    if (/\/image$/.test(url)) {
+      // The product image: its own answers (bytes), so the read's queue is untouched.
+      imageFetches.push({ url, init });
+      const img = imageQueue.length ? imageQueue.shift() : { status: 404, type: 'application/json', bytes: Buffer.from('{}') };
+      // `wait`: a promise the test resolves, so it can look at the page while the image is still on its way.
+      return (img.wait || Promise.resolve()).then(() => ({
+        status: img.status,
+        headers: { get: (k) => (String(k).toLowerCase() === 'content-type' ? img.type : null) },
+        blob: () => Promise.resolve(new Blob([img.bytes], { type: img.type })),
+      }));
+    }
     fetches.push({ url, init });
     const next = queue.length ? queue.shift() : { status: 503, body: { error: 'unavailable' } };
     return Promise.resolve({
@@ -109,13 +122,21 @@ function harness({ hash = `#t=${TOKEN}`, answers = [] } = {}) {
       json: () => (next.text !== undefined ? Promise.reject(new SyntaxError('not json')) : Promise.resolve(next.body)),
     });
   };
+  class FileReader {
+    readAsDataURL(blob) {
+      blob.arrayBuffer().then((ab) => {
+        this.result = `data:${blob.type};base64,${Buffer.from(ab).toString('base64')}`;
+        if (this.onload) this.onload();
+      }, () => { if (this.onerror) this.onerror(); });
+    }
+  }
   const context = vm.createContext({
-    window, document, fetch, URL, URLSearchParams, Date: FakeDate,
+    window, document, fetch, URL, URLSearchParams, Date: FakeDate, Blob, FileReader,
     setTimeout: (fn, ms) => addTimer(fn, ms, false), clearTimeout: removeTimer,
     setInterval: (fn, ms) => addTimer(fn, ms, true), clearInterval: removeTimer,
   });
   return {
-    app, clock, timers, storage, fetches, replaced, location,
+    app, clock, timers, storage, fetches, imageFetches, replaced, location,
     start() { vm.runInContext(SRC, context, { filename: 'app.js' }); },
     answer(...more) { queue.push(...more); },
     pollTimers() { return timers.filter((x) => !x.repeat); },
@@ -1275,4 +1296,119 @@ test('agent name: drawn as text, never as markup', async () => {
   const [line] = byClass(h, 'hero-agent');
   assert.equal(line.textContent, 'Requested by <img src=x onerror=alert(1)>');
   assert.equal((line.children || []).length, 0);
+});
+
+// ---- the product image ---------------------------------------------------------------------------------------
+
+const JPEG_BYTES = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(40, 7)]);
+const imagesIn = (h) => h.app.all((n) => n.tagName === 'IMG');
+const slotsIn = (h) => h.app.all((n) => n.className === 'hero-item-image');
+
+test('product image: asked once with the link header, drawn as a data: URL in place, never re-rendering the page', async () => {
+  let release;
+  const wait = new Promise((r) => { release = r; });
+  const h = harness({
+    answers: [{ status: 200, body: view({ product_image: true }) }, { status: 200, body: view({ product_image: true }) }],
+    imageAnswers: [{ status: 200, type: 'image/jpeg', bytes: JPEG_BYTES, wait }],
+  });
+  h.start();
+  await settle();
+  const summaryBefore = h.app.children[0];
+  assert.ok(summaryBefore, 'the page is drawn before the image arrives');
+  assert.equal(slotsIn(h).length, 1);
+  assert.equal(imagesIn(h).length, 0);
+  release();
+  await settle();
+  assert.equal(h.imageFetches.length, 1);
+  assert.equal(h.imageFetches[0].url, `/agenpas/api/p/${PID}/image`);
+  assert.equal(h.imageFetches[0].init.headers['X-Agenpas-Link'], TOKEN);
+  assert.equal(h.imageFetches[0].init.headers.Accept, 'image/jpeg, image/png, image/webp');
+  assert.equal(h.imageFetches[0].init.credentials, 'omit');
+  const imgs = imagesIn(h);
+  assert.equal(imgs.length, 1);
+  assert.equal(imgs[0].src, `data:image/jpeg;base64,${JPEG_BYTES.toString('base64')}`);
+  assert.equal(imgs[0].alt, '');
+  assert.equal(h.app.children[0], summaryBefore, 'filled in place: the summary was not rebuilt');
+  // The next poll (unchanged view): no second image request, the image stays.
+  h.runNext();
+  await settle();
+  assert.equal(h.imageFetches.length, 1);
+  assert.equal(imagesIn(h).length, 1);
+});
+
+test('product image: a later re-render draws the image it already has, without asking again', async () => {
+  const h = harness({
+    answers: [{ status: 200, body: view({ product_image: true }) },
+      { status: 200, body: view({ product_image: true, screen: 'approve', state: 'awaiting_buyer_authorization' }) }],
+    imageAnswers: [{ status: 200, type: 'image/jpeg', bytes: JPEG_BYTES }],
+  });
+  h.start();
+  await settle();
+  h.runNext();
+  await settle();
+  assert.equal(h.imageFetches.length, 1);
+  assert.equal(imagesIn(h).length, 1);
+});
+
+test('product image: none without the flag; a 404, a wrong type or an empty body shows no image and no empty slot', async () => {
+  const none = harness({ answers: [{ status: 200, body: view() }] });
+  none.start();
+  await settle();
+  assert.equal(none.imageFetches.length, 0);
+  assert.equal(slotsIn(none).length, 0);
+  for (const answer of [
+    { status: 404, type: 'application/json', bytes: Buffer.from('{"error":"no_image"}') },
+    { status: 500, type: 'image/jpeg', bytes: JPEG_BYTES },  // image bytes, but not a 200
+    { status: 200, type: 'image/svg+xml', bytes: Buffer.from('<svg/>') },
+    { status: 200, type: 'text/html', bytes: Buffer.from('<html></html>') },
+    { status: 200, type: 'image/jpeg', bytes: Buffer.alloc(0) },
+    { status: 200, type: 'image/jpeg', bytes: Buffer.concat([JPEG_BYTES, Buffer.alloc(2 * 1024 * 1024)]) },
+  ]) {
+    const h = harness({ answers: [{ status: 200, body: view({ product_image: true }) }], imageAnswers: [answer] });
+    h.start();
+    await settle();
+    assert.equal(h.imageFetches.length, 1);
+    assert.equal(imagesIn(h).length, 0, answer.type);
+    assert.equal(slotsIn(h).length, 0, answer.type);
+    assert.equal(h.app.all((n) => n.className === 'hero-item-with-image' || n.className === 'hero-item hero-item-with-image').length, 0);
+    // Never asked again on later polls.
+    h.answer({ status: 200, body: view({ product_image: true, screen: 'approve' }) });
+    h.runNext();
+    await settle();
+    assert.equal(h.imageFetches.length, 1);
+  }
+});
+
+test('product image: a re-render while the image is on its way does not ask again, and the image lands in the new slot', async () => {
+  let release;
+  const wait = new Promise((r) => { release = r; });
+  const h = harness({
+    answers: [{ status: 200, body: view({ product_image: true }) },
+      { status: 200, body: view({ product_image: true, screen: 'approve', state: 'awaiting_buyer_authorization' }) }],
+    imageAnswers: [{ status: 200, type: 'image/jpeg', bytes: JPEG_BYTES, wait }],
+  });
+  h.start();
+  await settle();
+  h.runNext();  // the changed view: a re-render while the image is still loading
+  await settle();
+  assert.equal(h.imageFetches.length, 1);
+  release();
+  await settle();
+  assert.equal(h.imageFetches.length, 1);
+  assert.equal(imagesIn(h).length, 1);
+});
+
+test('product image: an image the browser cannot draw removes its slot and the item goes back to no image', async () => {
+  const h = harness({
+    answers: [{ status: 200, body: view({ product_image: true }) }],
+    imageAnswers: [{ status: 200, type: 'image/jpeg', bytes: JPEG_BYTES }],
+  });
+  h.start();
+  await settle();
+  const [img] = imagesIn(h);
+  assert.ok(img);
+  img.onerror();
+  assert.equal(slotsIn(h).length, 0);
+  assert.equal(h.app.all((n) => /hero-item-with-image/.test(n.className)).length, 0);
+  assert.equal(h.app.all((n) => n.className === 'hero-item').length, 1);
 });

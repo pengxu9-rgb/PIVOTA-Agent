@@ -43,6 +43,8 @@ Process-local, like the public read tier's limiter:
 - a token bucket per client IP (30, refilling 5/s; looser because buyers share carrier NAT addresses), checked
   before any token work, and one per link token (10, refilling 2/s; a page polls every 2..15 s). Over either: 429
   `rate_limited` with `Retry-After`;
+- the image route has its own bucket per link token (5, refilling one per 5 s; a page asks once per load), after the
+  same IP bucket, and caches each store image per URL;
 - a single-flight read with a 2 s cache per (agent id, purchase id): however many pages poll one purchase, the
   backend sees at most one read per 2 s (unavailable answers are cached too, so an outage is not amplified);
 - refusal logs are sampled: the first 5 per reason per minute, then one line with the count not logged.
@@ -53,6 +55,7 @@ Process-local, like the public read tier's limiter:
 |---|---|
 | `GET /agenpas/p/:purchaseId#t=<token>` | The page (HTML shell). The token is in the fragment, which the server never receives: the shell is the same for every well-formed id, and the page shows the expired / invalid screen from the API's 410 / 404. A malformed id: friendly 404 page. No secret configured: friendly 503 page. |
 | `GET /agenpas/api/p/:purchaseId` | JSON for the page. Token ONLY in the `X-Agenpas-Link` header (a `?t=` query is ignored). 200 view, 404 `link_invalid` / `not_found`, 410 `link_expired`, 503 `unavailable` with `Retry-After`. |
+| `GET /agenpas/api/p/:purchaseId/image` | The purchase's product image (see "The product image" under "Backend contract"). Token ONLY in `X-Agenpas-Link`. 200 the image bytes (JPEG, PNG or WebP), 404 `no_image` / `link_invalid`, 410 `link_expired`, 429, 503. |
 | `GET /agenpas/assets/app.js`, `app.css` | The page's script and style, same origin. |
 | `GET /agenpas/dev/start?scenario=<name>` | Dev fixtures only: mints a fixture link and redirects to it. |
 | `POST /agenpas/api/p/:purchaseId/shipping-address` | `AGENPAS_COLLECT_SHIPPING` only. The buyer's shipping address and email, JSON, token in `X-Agenpas-Link` only. 200 next view, 415 not JSON, 413 over 4 KB, 400 bad JSON, 422 `{field_errors}`, 409 `address_already_set`, 409 `consent_required` (the step's terms are not accepted yet), 409 `address_not_requested` (the gateway's own fresh read shows no form: held, placing or later, the `rp_` rail, an unsatisfied shipping block, the address already given), 409 `address_not_taken` (any other backend 409, e.g. collection turned off while the page was open); in every 409 nothing is sent on, 429, 404, 503. |
@@ -482,10 +485,27 @@ Fields the projection reads (tolerant of extra fields, and of the same names at 
 tax_minor}`, `next_action.{kind, url, expires_at, consent_required}` (or `action`), `order_reference`,
 `poll_after_seconds`, `rail` / `rail_purchase_id` (only to tell the rail), `consent` (see "Terms and privacy consent"),
 `payment_card.{network, last4}` (top level only: see below), `agent_display_name` (top level only: see below),
+`product_image_url` (top level only, and never passed on: see below),
 `detail.{merchant_domain, product_name, variant_title, quantity, currency, refusal_reason, last_error_code,
 merchant_order_status_url, buyer_step, contact_reentry_required}`. Never passed to the page: `rail`, `executor`,
 `rail_purchase_id`, the `pp_` id when the link names a rail id, `detail` itself, owner hashes, consent records and
 versions, raw codes.
+
+THE PRODUCT IMAGE (src/agenpas/productImage.js). With the backend's `AGENPAS_PRODUCT_IMAGE_ENABLED` on, a body carries
+`product_image_url` (top level only, never `detail`) when the catalog surely has an image of the exact variant bought
+(the backend decides: the bought sku's own image, or the product's when it has one variant). The view never passes the
+URL: it says `product_image: true`, and only when the URL is a clean public https URL (port 443, a host name that is not
+an IP literal, no user info, no fragment, printable ASCII, at most 2048 characters). The page then asks
+`GET /agenpas/api/p/:id/image` ONCE, with the link token in `X-Agenpas-Link`, reads the bytes into a data: URL (the CSP
+allows images from 'self' and data: only; an `<img>` cannot send the header) and draws a 56 px square beside the item's
+name, filled in place, never by re-rendering the page. That route re-reads the purchase through the same single-flight
+read and fetches THAT URL server-side, never one from the request: public addresses only (DNS pinned by
+createPublicNetworkFetch), no redirects, a 3 s timeout, at most 2 MiB, and the bytes must be a JPEG, PNG or WebP
+(sniffed; the store's Content-Type is ignored; SVG is refused). It answers the bytes as the sniffed type with
+`Content-Security-Policy: default-src 'none'; sandbox`, or 404 `no_image` for every failure; answers are cached per URL
+(5 minutes, a refusal 1 minute; at most 64 answers and 16 MiB of images, the oldest settled answer going first, and a
+fetch still running is never evicted). At most 8 store fetches run at once; one more is refused, never queued. The store
+is sent the URL, `GET` and one `Accept` header, nothing else: it never sees the buyer's IP, a cookie or the link.
 
 THE CARD. With the backend's `AGENPAS_PAYMENT_CARD_ENABLED` on, a Reap-rail body whose checkout is bound to a card
 carries `payment_card = {network, last4}`: the enrollment's two display attributes (no other card data exists on

@@ -151,6 +151,18 @@ main { flex: 1; display: flex; flex-direction: column; }
 .hero-item { margin-top: 20px; padding: 14px 16px; border-radius: 16px; background: var(--hero-card); }
 .hero-item-name { margin: 0; font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
 .hero-item-meta { margin: 2px 0 0; font-size: 13px; color: var(--hero-muted); overflow-wrap: anywhere; }
+/* The product image (only when the backend named one of the exact variant bought): a square beside the name. */
+.hero-item-with-image { display: flex; align-items: center; gap: 12px; }
+.hero-item-image {
+  flex: 0 0 56px;
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--hero-chip);
+}
+.hero-item-image img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.hero-item-text { min-width: 0; }
 
 h1, h2 { margin: 0 0 6px; font-size: 26px; line-height: 1.2; font-weight: 700; letter-spacing: -0.02em; }
 p { margin: 0 0 10px; }
