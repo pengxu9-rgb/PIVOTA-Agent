@@ -845,7 +845,9 @@
       ui.cardRetries = 0;
       if (refusal === 'card_choice_stale' || refusal === 'card_choice_not_offered') {
         ui.cardDraft = null;
-        ui.cardMessage = 'Your saved cards changed. Check the card, then approve again.';
+        ui.cardMessage = choice && choice.new_card === true
+          ? "We couldn't start adding a new card. Check the card, then try again."
+          : 'Your saved cards changed. Check the card, then approve again.';
         pollNow();
       } else if (refusal === 'card_choice_closed') {
         ui.cardMessage = null;

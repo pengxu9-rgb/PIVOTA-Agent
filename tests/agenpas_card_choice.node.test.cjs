@@ -519,7 +519,7 @@ test('POST: a saved card after a new card was asked for is refused in the gatewa
 });
 
 test('POST: only exactly {new_card: true} (400 for false, a string, or with a handle)', async () => {
-  for (const payload of [{ new_card: false }, { new_card: 'true' }, { new_card: true, handle: H1 }, { newCard: true }]) {
+  for (const payload of [{ new_card: false }, { new_card: 'true' }, { new_card: 1 }, {}, { new_card: true, handle: H1 }, { newCard: true }]) {
     const reader = fakeBackend();
     const res = await post(app({ reader }), payload);
     assert.equal(res.status, 400, JSON.stringify(payload));
