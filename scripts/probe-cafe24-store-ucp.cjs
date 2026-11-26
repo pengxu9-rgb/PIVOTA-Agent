@@ -51,7 +51,10 @@ const CALL_TIMEOUT_MS = 10000;
 const READ_TOOLS = Object.freeze(new Set(['search_catalog', 'lookup_catalog']));
 const READ_METHODS = Object.freeze(new Set(['tools/list', 'tools/call']));
 const STORE_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
-const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,99}$/;
+// No '/' in a name: real UCP names are reverse-DNS, dates, transports and tool names, so a URL-shaped value (scheme
+// or host/path) becomes 'other'. Our own request paths use PATH_RE instead.
+const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,99}$/;
+const PATH_RE = /^(?:\/[A-Za-z0-9_.-]{1,40}){1,6}$/;
 const QUERY_RE = /^[A-Za-z0-9 ]{1,60}$/;
 const COUNTRY_RE = /^[A-Z]{2}$/;
 const CURRENCY_RE = /^[A-Z]{3}$/;
@@ -69,6 +72,12 @@ function str(v) {
 function safeName(v) {
   const s = str(v);
   return NAME_RE.test(s) ? s : 'other';
+}
+
+/** One of our own request paths for the trace: itself if it is plain path segments, else 'other'. */
+function safePath(v) {
+  const s = str(v);
+  return PATH_RE.test(s) ? s : 'other';
 }
 
 function safeNames(list) {
@@ -142,7 +151,7 @@ function guardedFetch({ baseFetch, store, trace }) {
     const u = new URL(String(url));
     const host = u.hostname.toLowerCase();
     const method = str(init.method || 'GET').toUpperCase();
-    const entry = { method, host: host === profileHost || host === apiHost ? host : 'other', path: safeName(u.pathname) };
+    const entry = { method, host: host === profileHost || host === apiHost ? host : 'other', path: safePath(u.pathname) };
     trace.push(entry);
     const refuse = (why) => {
       entry.refused = why;

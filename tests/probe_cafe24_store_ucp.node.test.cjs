@@ -348,6 +348,35 @@ test('profile summary: handler names, unsafe names, version overlap', () => {
   assert.equal(none.version_overlap, null);
 });
 
+test('URL-shaped names from the store come out as other: handler, capability, service, tool', () => {
+  const p = profile({ handlers: { 'https://pay.example.net/x': [{}], 'pay.example.net/x': [{}], 'com.example.tokens': [{}] } });
+  p.ucp.capabilities['https://cap.example.net/c'] = [{ version: '2026-08-25' }];
+  p.ucp.services['https://svc.example.net/s'] = [{ version: '2026-08-25', transport: 'mcp//x' }];
+  const s = probe.summarizeProfile(p, API_HOST);
+  assert.deepEqual(s.payment_handlers, ['other', 'other', 'com.example.tokens']);
+  assert.ok(s.capabilities.some((c) => c.name === 'other'));
+  assert.ok(s.capabilities.some((c) => c.name === 'dev.ucp.shopping.checkout'));
+  const svc = s.services.filter((x) => x.service === 'other');
+  assert.ok(svc.length >= 1);
+  assert.ok(svc.every((x) => x.transport === 'other'));
+  const text = JSON.stringify(s);
+  assert.ok(!text.includes('example.net'), text);
+  const listed = {
+    status: 200,
+    response: { jsonrpc: '2.0', id: 1, result: { tools: [{ name: 'https://tool.example.net/t' }, { name: 'search_catalog' }] } },
+  };
+  assert.deepEqual(probe.classifyToolsList(listed).tools, ['other', 'search_catalog']);
+});
+
+test('trace paths: our own request paths are kept, anything else is other', async () => {
+  const trace = [];
+  const f = probe.guardedFetch({ baseFetch: async () => json(200, {}), store: STORE, trace });
+  await f(`https://${PROFILE_HOST}/.well-known/ucp`, { method: 'GET' });
+  await assert.rejects(f(`https://${PROFILE_HOST}//x.example.net/y`, { method: 'GET' }));
+  assert.equal(trace[0].path, '/.well-known/ucp');
+  assert.equal(trace[1].path, 'other');
+});
+
 test('id shapes', () => {
   assert.equal(probe.idShape('gid://cafe24/Product/123'), 'gid');
   assert.equal(probe.idShape('123'), 'numeric');
