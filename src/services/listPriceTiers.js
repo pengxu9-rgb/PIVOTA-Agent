@@ -96,6 +96,10 @@ function listRowPriceAsOfEnabled(env = process.env) {
 }
 
 function priceStalenessMode(env = process.env) {
+  // PARTNER SANDBOX (decision 4): copied catalog prices are fresh there, so nothing is stale by age and the demote
+  // is off whatever the flag says. A no-op everywhere else.
+  // eslint-disable-next-line global-require
+  if (require('../config/sandbox').copiedPricesAreFresh(env)) return 'off';
   const v = str(env && env[STALENESS_FLAG]).toLowerCase();
   if (v === 'shadow') return 'shadow';
   return /^(1|true|yes|on|enabled)$/.test(v) ? 'on' : 'off';

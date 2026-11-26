@@ -726,9 +726,9 @@ function paymentCardFor(raw, screen) {
 
 // ---- the agent's name ---------------------------------------------------------------------------------------------
 //
-// The backend's top-level `agent_display_name` (pivota-backend docs/agent_purchases_routes.md): the name Pivota
-// REVIEWED for the purchase's agent, set by hand; never the name the agent's developer typed. Read only from the top
-// level (never `detail`). The page says "Requested by <name>". The same shape the backend checks
+// The backend's top-level `agent_display_name` (pivota-backend docs/agent_purchases_routes.md): a name set by hand,
+// else the agent's developer-portal name after the backend's block list, lookalike and rename checks (backend only;
+// not repeated here). Read only from the top level (never `detail`). The page says "Requested by <name>". The same shape the backend checks
 // (db/agents.clean_buyer_display_name), checked again here and NEVER repaired: a name that fails is no member at all,
 // so the page shows no line rather than an altered name. 1-64 code points, NFC, no surrounding space, the only space
 // U+0020 and never two in a row, no control / format (bidi, zero-width) / surrogate / private-use / unassigned code
@@ -1003,7 +1003,7 @@ function buildView(body, {
   // Only when the backend names the card and the screen may show it: otherwise no member at all.
   const paymentCard = paymentCardFor(src.payment_card, screen);
   if (paymentCard) view.payment_card = paymentCard;
-  // Only when the backend names a reviewed name of the right shape: otherwise no member at all.
+  // Only when the backend names a name of the right shape: otherwise no member at all.
   const agentName = agentDisplayNameFor(src.agent_display_name);
   if (agentName) view.agent_display_name = agentName;
   // THE PRODUCT IMAGE (productImage.js): only a flag. The page never learns the store's URL; it asks

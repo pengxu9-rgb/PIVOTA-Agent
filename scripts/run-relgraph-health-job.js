@@ -7,7 +7,7 @@
  * WHY THIS EXISTS. `Relationship Graph Serving Guard Audit` ran on a GitHub-hosted runner and last
  * succeeded 2026-08-25. On 2026-08-25 the Railway DATABASE_URL was decommissioned
  * (pivota-backend infra/gcp/setup_scheduler.sh:338) and prod Postgres became private-only —
- * `pivota-pg` has `ipv4Enabled: false`, a single RFC1918 address (10.25.0.2), and no authorized
+ * `pivota-pg` has `ipv4Enabled: false`, a single RFC1918 address, and no authorized
  * networks. A GitHub-hosted runner has no route to it and never will; the `read ECONNRESET` those
  * runs report is GitHub's network resetting traffic to a non-routable address, not a database
  * fault. It then stopped firing entirely: #2109 (`e128a2d58`, 2026-08-26) removed the `schedule:`

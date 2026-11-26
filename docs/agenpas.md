@@ -515,12 +515,15 @@ is from a fixed list (Visa, Mastercard, American Express, Discover, JCB, UnionPa
 "Pay with Visa ending 4242" on the approval screen and "Paid with" on "Your order is placed". A held, stopped or
 earlier screen never names a card, whatever the body says.
 
-THE AGENT'S NAME. A body carries `agent_display_name` only when Pivota has reviewed a name for the purchase's agent
-(the backend's `agents.buyer_display_name`, set by hand; never the name the agent's developer typed at registration).
-The view passes it on every screen, from the top level only, after the same shape check the backend makes (1-64
-characters, NFC, no surrounding or doubled space, no control, format, bidi or zero-width character, at least one letter
-or digit); a name that fails is dropped whole, never repaired. The page shows "Requested by <name>" at the top of the
-summary panel, as text. No name: no line. The page still never shows the agent id.
+THE AGENT'S NAME. A body carries `agent_display_name` only when the backend names the purchase's agent: a name set by
+hand (`agents.buyer_display_name`), else the name the agent registered with in the developer portal after the backend's
+checks (no payment brand, bank, "secure", Pivota or AgenPaz, including common lookalike spellings and non-ASCII Latin
+letters; only letters of allowed scripts; no Latin mixed with Cyrillic or Greek; no placeholder; a rename is hidden
+until checked again). The rules live in the backend (pivota-backend docs/agent_purchases_routes.md); the gateway does
+not repeat them. The view passes it on every screen, from the top level only, after the same shape check the backend
+makes (1-64 characters, NFC, no surrounding or doubled space, no control, format, bidi or zero-width character, at least
+one letter or digit); a name that fails is dropped whole, never repaired. The page shows "Requested by <name>" at the
+top of the summary panel, as text. No name: no line. The page still never shows the agent id.
 
 ## Trying it locally
 

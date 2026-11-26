@@ -3,8 +3,8 @@
 `relationship-graph-sync-routine.yml` and `relationship-graph-serving-guard-audit.yml` were removed
 on 2026-09-09. They did not fail because of a bug in this repo, and they cannot be repaired here.
 
-**Prod Postgres is private-only.** `pivota-pg` has `ipv4Enabled: false`, one RFC1918 address
-(`10.25.0.2`), and no authorized networks. A GitHub-hosted runner has no route to it. The
+**Prod Postgres is private-only.** `pivota-pg` has `ipv4Enabled: false`, one RFC1918 address,
+and no authorized networks. A GitHub-hosted runner has no route to it. The
 `read ECONNRESET` those runs reported is GitHub's network resetting traffic to a non-routable
 address — not a database fault, and not something a retry or a longer timeout fixes.
 

@@ -9,6 +9,7 @@
 // fabricate competition — a single-offer product yields best_offer + an empty competition set.
 
 const { isUnavailableAvailabilityText } = require('../services/offerAvailabilitySql');
+const { copiedPricesAreFresh } = require('../config/sandbox');
 
 const EXACT_RETAILER_PDP = /^https:\/\/[A-Za-z0-9.-]+(?:\/[a-z]{2}-[a-z]{2})?\/products\/[A-Za-z0-9_-]+\?variant=([0-9]{1,19})$/;
 const verifiedRetailerPdpUrl = Symbol.for('pivota.commerce.verifiedRetailerPdpUrl');
@@ -154,7 +155,12 @@ function offerPriceIsStale(offer) {
   const live = liveReadStatus(offer);
   if (live === 'verified') return false;
   if (live === 'currency_mismatch') return true;
-  return offer.price_stale === true || Boolean(offer.requires_live_verification);
+  if (offer.requires_live_verification) return true;
+  // PARTNER SANDBOX (decision 4): a copied catalog price is fresh there whatever its age, so the backend's
+  // age-based `price_stale` is not relayed. Read per call; everywhere else this is exactly the line it replaced:
+  // `price_stale === true || Boolean(requires_live_verification)`.
+  if (copiedPricesAreFresh()) return false;
+  return offer.price_stale === true;
 }
 
 // `price_checked_at` is relayed only when it is an ISO timestamp that is not in the future; anything else is

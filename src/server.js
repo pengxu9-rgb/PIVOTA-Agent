@@ -13,6 +13,9 @@ const vertexGemini = require('./llm/vertexGemini');
  */
 require('dotenv').config();
 require('./config/storedCatalogRehearsal').assertStoredCatalogRehearsal();
+// PIVOTA_ENV=sandbox only (a no-op everywhere else): refuse to load a partner-sandbox gateway whose settings could
+// reach real money, prod, or a store's site. Names the settings, never their values (src/config/sandbox.js).
+require('./config/sandbox').assertSandboxConfig();
 const {
   marketsForRequest, primaryMarket, servedMarkets, marketBind, laneMarkets,
 } = require('./services/servedMarkets');
@@ -104,6 +107,8 @@ const {
   deploymentId: platformDeploymentId,
   gitBranch: platformGitBranch,
   serviceName: platformServiceName,
+  platformEnv: platformEnvLabel,
+  isProduction: platformIsProduction,
   requirePlatformEnv,
 } = require('./config/platform');
 const logger = require('./logger');
@@ -604,7 +609,15 @@ const isAuroraDegradedPath = (pathname) => {
     prefix.endsWith('/') ? path.startsWith(prefix) : path === prefix || path.startsWith(`${prefix}/`),
   );
 };
+// PARTNER SANDBOX: the Aurora BFF (the consumer chat app) is not loaded. Its module starts lanes that fetch from prod
+// hosts by default (the reco-alternatives authority backfill, the URL unblocker, the dupe KB backfill), and nothing in
+// the partner journey needs it; recommend_products answers its empty, reasoned result without it.
 try {
+  if (require('./config/platform').isSandbox()) {
+    const skipped = new Error('the Aurora BFF is not loaded in the partner sandbox');
+    skipped.code = 'AURORA_SKIPPED_IN_SANDBOX';
+    throw skipped;
+  }
   const auroraRoutes = require('./auroraBff/routes');
   mountAuroraBffRoutes =
     typeof auroraRoutes?.mountAuroraBffRoutes === 'function'
@@ -621,15 +634,21 @@ try {
   auroraRoutesReady = true;
 } catch (err) {
   auroraRoutesReady = false;
-  auroraRoutesLoadError = String(err?.stack || err?.message || err || 'unknown_error').slice(0, 1200);
-  logger.error(
-    {
-      err: err?.message || String(err),
-      fail_closed: AURORA_ROUTES_FAIL_CLOSED,
-      aurora_routes_ready: false,
-    },
-    'auroraBff routes failed to load; disabling aurora routes for this process',
-  );
+  if (err?.code === 'AURORA_SKIPPED_IN_SANDBOX') {
+    // Expected in the partner sandbox, not a failure: no stack, info level.
+    auroraRoutesLoadError = 'AURORA_SKIPPED_IN_SANDBOX';
+    logger.info({ event: 'aurora_skipped_in_sandbox', code: 'AURORA_SKIPPED_IN_SANDBOX' }, 'auroraBff routes not loaded in the partner sandbox');
+  } else {
+    auroraRoutesLoadError = String(err?.stack || err?.message || err || 'unknown_error').slice(0, 1200);
+    logger.error(
+      {
+        err: err?.message || String(err),
+        fail_closed: AURORA_ROUTES_FAIL_CLOSED,
+        aurora_routes_ready: false,
+      },
+      'auroraBff routes failed to load; disabling aurora routes for this process',
+    );
+  }
 }
 const { applyGatewayGuardrails, clientIpFromRequest } = require('./guardrails/gatewayGuardrails');
 const {
@@ -31013,6 +31032,10 @@ function isPydanticMissingBodyField(err, fieldName) {
 }
 
 const app = express();
+// PARTNER SANDBOX marks (src/config/sandbox.js sandboxResponseMarks): a no-op outside PIVOTA_ENV=sandbox. In the
+// sandbox, X-Pivota-Env: sandbox on every response, and every JSON body on the MCP doors and the REST invoke route
+// marked sandbox. Mounted first so no handler's response escapes it.
+app.use(require('./config/sandbox').sandboxResponseMarks((req) => require('./config/sandbox').isSandboxMarkedPath(req?.path)));
 
 async function fetchBackendAdmin({ method, path, params, data }) {
   if (!ADMIN_API_KEY) {
@@ -31080,7 +31103,9 @@ function extractInvokeAuthToken(req) {
   return bearer || null;
 }
 
-const INVOKE_EXTERNAL_API_KEY_PATTERN = /^ak_(live_)?[0-9a-f]{64}$/;
+// The key FORMAT this environment accepts lives in ONE place, src/config/sandbox.js agentApiKeyFormatOk: today's
+// `ak_(live_)?<64 hex>` everywhere, `ak_test_<64 hex>` only under PIVOTA_ENV=sandbox. Read per request.
+const { agentApiKeyFormatOk: invokeApiKeyFormatOk, markSandboxRpcOutcome, markSandboxRpcBody } = require('./config/sandbox');
 const invokeAuthCache = new Map();
 const AGENT_AUTH_EMERGENCY_FALLBACK_ENABLED = parseBooleanEnv(
   process.env.AGENT_AUTH_EMERGENCY_FALLBACK_ENABLED,
@@ -31790,7 +31815,7 @@ async function requireExternalInvokeAuth(req, res, next, { acceptsCheckoutToken 
     });
   }
 
-  if (!INVOKE_EXTERNAL_API_KEY_PATTERN.test(provided)) {
+  if (!invokeApiKeyFormatOk(provided)) {
     logger.warn(
       {
         path: req?.path || null,
@@ -35182,9 +35207,10 @@ function runPublicReadMcpDispatch(req, res, toolCallRecorder) {
       );
       try {
         const adapter = await getPublicReadMcpAdapter();
-        const out = await adapter.handleJsonRpc(
+        // Marked before the heartbeat can write it raw (a no-op outside the sandbox).
+        const out = markSandboxRpcOutcome(await adapter.handleJsonRpc(
           withMcpToolCallObserver({ headers: req.headers || {}, body: req.body }, toolCallRecorder),
-        );
+        ));
         toolCallRecorder?.recordRpcResponse(out);
         logMcpToolCallPriceVerification(req, out);
         // finish() returns true when the heartbeat already committed the wire (slow path) and wrote the
@@ -35203,7 +35229,7 @@ function runPublicReadMcpDispatch(req, res, toolCallRecorder) {
         logger.error({ err: err?.message || String(err) }, 'Public read MCP route failed');
         toolCallRecorder?.recordInternalError();
         const rpcId = req?.body && typeof req.body === 'object' && req.body.id !== undefined ? req.body.id : null;
-        if (heartbeat.fail({ jsonrpc: '2.0', id: rpcId, error: { code: -32603, message: 'Internal error.' } })) {
+        if (heartbeat.fail(markSandboxRpcBody({ jsonrpc: '2.0', id: rpcId, error: { code: -32603, message: 'Internal error.' } }))) {
           return undefined;
         }
         return res.status(503).json({ error: 'mcp_unavailable' });
@@ -35399,6 +35425,8 @@ async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapte
             // A listed synthetic caller is shown only the tools it may call: an LLM simulator would otherwise
             // try the rest, be refused, and count those refusals as tool errors.
             if (req.syntheticCaller && req.body?.method === 'tools/list') out = filterToolsListForSynthetic(out);
+            // Marked before the heartbeat can write it raw (a no-op outside the sandbox).
+            out = markSandboxRpcOutcome(out);
             toolCallRecorder?.recordRpcResponse(out);
             logMcpToolCallPriceVerification(req, out);
             if (heartbeat.finish(out)) {
@@ -35414,7 +35442,7 @@ async function serveCommerceMcpJsonRpc(req, res, { handlerEnteredAtMs, getAdapte
             logger.error({ err: err?.message || String(err) }, failureLabel);
             toolCallRecorder?.recordInternalError();
             const rpcId = req?.body && typeof req.body === 'object' && req.body.id !== undefined ? req.body.id : null;
-            if (heartbeat.fail({ jsonrpc: '2.0', id: rpcId, error: { code: -32603, message: 'Internal error.' } })) {
+            if (heartbeat.fail(markSandboxRpcBody({ jsonrpc: '2.0', id: rpcId, error: { code: -32603, message: 'Internal error.' } }))) {
               return undefined;
             }
             return res.status(503).json({ error: 'mcp_unavailable' });
@@ -40021,6 +40049,12 @@ app.get('/version', (req, res) => {
     branch: SERVICE_GIT_BRANCH || null,
     deployment_id: SERVICE_DEPLOYMENT_ID || null,
     started_at: SERVICE_STARTED_AT,
+    // The environment label (src/config/platform.js platformEnv, read per request): production | staging |
+    // sandbox | development | test, so a run driver can pin which environment it is talking to. On a managed
+    // platform that names no environment this is the fail-closed "production" (and the boot refuses there anyway).
+    // The production UNION wins, as every guard sees it: PIVOTA_ENV=staging beside NODE_ENV=production reports
+    // "production", never "staging".
+    env: platformIsProduction() ? 'production' : platformEnvLabel(),
   });
 });
 
