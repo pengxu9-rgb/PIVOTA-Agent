@@ -28,6 +28,7 @@ All read per request; no restart needed.
 | `AGENPAS_HOSTED_HOSTS` | empty | Comma-separated exact host names the payment partner serves its hosted pages from. Empty refuses every hosted URL (the page shows no button, only "Getting the secure page ready"). |
 | `AGENPAS_EMBED_HOSTED_PAGES` | off | Off: hosted pages open in a popup or a new tab. On: the page frames them (see below). |
 | `AGENPAS_COLLECT_SHIPPING` | off | Inside `AGENPAS_ENABLED`. On: when the purchase lacks a shipping address or email, the page asks for it (see "Shipping address"). Off: the page says "Go back to the chat to add your address", and the write route does not exist. |
+| `AGENPAS_CARD_PICKER_ENABLED` | off | Inside `AGENPAS_ENABLED`. On: while the backend says an A2A purchase waits for the buyer's card (its `card_choice`, behind the backend's flag of the same name), the page shows the card it will pay with, lets the buyer pick another saved card and confirms it on Approve (see "Card choice"). Off: the write route does not exist (the host guard refuses it) and the view has exactly its old members. Turn it on together with the backend's flag on `web`, before the backend's worker. |
 | `AGENPAS_CONSENT_ENABLED` | off | On: the card and approval screens can take the buyer's acceptance of Pivota's Terms of Service and Privacy Policy (`POST /agenpas/api/p/<id>/consent`), the API view gains a `consent` member, and `start_purchase` / `get_order` (and, with the Reap rail served, UCP `create_checkout`) each gain one sentence. Off: that route does not exist (the host guard refuses it exactly as before), the view has exactly its old members, and every description is byte-identical. See "Terms and privacy consent". |
 | `AGENPAS_INTERNAL_CONSENT_KEY` | none | The dedicated key (`X-Internal-Key`, at least 32 characters) the gateway presents on the backend's internal consent write. Separate from `AGENPAS_INTERNAL_READ_KEY`, which stays read-only. Missing or short: every consent write is unavailable (503; nothing recorded). |
 | `AGENPAS_LEGAL_HOSTS` | `pivota.cc` | Comma-separated exact host names the terms and privacy links may point at (https, default port, no user-info, exact host, the same check as hosted pages). A link anywhere else drops the offer: "not available right now". |
@@ -59,6 +60,7 @@ Process-local, like the public read tier's limiter:
 | `GET /agenpas/assets/app.js`, `app.css` | The page's script and style, same origin. |
 | `GET /agenpas/dev/start?scenario=<name>` | Dev fixtures only: mints a fixture link and redirects to it. |
 | `POST /agenpas/api/p/:purchaseId/shipping-address` | `AGENPAS_COLLECT_SHIPPING` only. The buyer's shipping address and email, JSON, token in `X-Agenpas-Link` only. 200 next view, 415 not JSON, 413 over 4 KB, 400 bad JSON, 422 `{field_errors}`, 409 `address_already_set`, 409 `consent_required` (the step's terms are not accepted yet), 409 `address_not_requested` (the gateway's own fresh read shows no form: held, placing or later, the `rp_` rail, an unsatisfied shipping block, the address already given), 409 `address_not_taken` (any other backend 409, e.g. collection turned off while the page was open); in every 409 nothing is sent on, 429, 404, 503. |
+| `POST /agenpas/api/p/:purchaseId/card-choice` | `AGENPAS_CARD_PICKER_ENABLED` only. The card the buyer approves with: exactly `{"handle": "<24 hex>"}`, JSON, token in `X-Agenpas-Link` only, 5 a minute per link. 200 next view, 400 `invalid_card_choice`, 415, 413, 409 `card_choice_not_offered` (the gateway's own fresh read shows no choice with that card; nothing sent on), 409 `card_choice_stale` (the backend's cards changed, or its worker holds the purchase this moment: the page sends the same card again, twice at most), 409 `card_choice_closed`, 429, 404, 410, 503. |
 | `POST /agenpas/api/p/:purchaseId/consent` | Only while `AGENPAS_CONSENT_ENABLED` is on (off: the front guard's 404, as before). The buyer accepted the terms for the current step. See "Terms and privacy consent" for its checks and answers. |
 
 The page: `default-src 'self'`, `script-src 'self'`, `style-src 'self'`, no inline script or style, no external
@@ -249,6 +251,32 @@ own comparison of the charged total with the quoted one runs after the charge th
 pivota-backend `services/reap_agentic_purchase.py`), so it reports a difference and does not prevent one.
 
 The stylesheet uses system fonts and pure-CSS marks: it fetches nothing.
+
+## Card choice
+
+The rule (11-26): the buyer confirms the card on OUR page before any token is asked for, because the payment
+partner cannot void a token. The backend (pivota-backend docs/agent_purchases_routes.md, "card-choice") parks a
+locked A2A purchase in `locking` with a top-level `card_choice = {confirmed, expires_at, cards: [{handle, network,
+last4, added_at, selected}]}`: the buyer's ACTIVE cards, newest first, the newest (or the card the purchase already
+named) selected. Only display attributes and a per-purchase handle reach the gateway, never the partner's card id.
+
+**The view** (`view.js`, `cardChoiceFor`): with `AGENPAS_CARD_PICKER_ENABLED` on, a `locking` purchase on the A2A
+rail, not held, whose `card_choice` checks out (1..10 cards, each handle 24 hex and unique, exactly one selected, an
+unconfirmed choice's deadline still ahead) is the `choose_card` screen, and the view carries
+`card_choice = {confirmed, cards: [{handle, label, last4, added_on, selected}]}` (the network as a label from the fixed
+list, else "Card"; `added_on` a date or null). Anything else: no member, and the screen is "Confirming your total" as
+before. The approval terms are not offered on this screen: they come on the approval screen.
+
+**The page**: "Approve your purchase", the card it will pay with ("Visa ending 4242 · Added Nov 20") and, with more
+than one card, **Change**, which opens the list in place ("Choose a card", one radio per card, "Use this card"). The
+buyer's pick stays in memory only. **Approve** posts the card; the page then shows the card and "Getting the secure page
+ready…" while the backend asks for the token, and the approval screen's button reads "Continue to the secure page"
+(the card is already confirmed; the button only opens the partner's page, which needs a click of its own). A
+`card_choice_stale` answer is retried with the same card, twice, 1.5 s apart (most often the backend's worker held the
+purchase for a moment); then "Your saved cards changed. Check the card, then approve again."
+
+**The write** goes on only when the gateway's own fresh read shows the choice with that card (a confirmed choice: only
+its own card again); the backend's compare-and-swap then decides. Adding a new card from Change is a later step.
 
 ## Shipping address
 
@@ -535,7 +563,8 @@ AGENPAS_PUBLIC_BASE_URL=http://localhost:<port> AGENPAS_LINK_SECRET=<any 32+ cha
 open http://localhost:<port>/agenpas/dev/start?scenario=happy   # redirects to /agenpas/p/<id>#t=…
 ```
 
-Scenarios: `needs_address` (with `AGENPAS_COLLECT_SHIPPING=1`: the address form, then the card step), `address_consent` (with
+Scenarios: `card_choice` (with `AGENPAS_CARD_PICKER_ENABLED=1`: a returning buyer with two saved cards picks one and
+approves, then the approval page and the order on that card), `needs_address` (with `AGENPAS_COLLECT_SHIPPING=1`: the address form, then the card step), `address_consent` (with
 `AGENPAS_COLLECT_SHIPPING=1` and `AGENPAS_CONSENT_ENABLED=1`: the terms on the address screen, then the form, then the card
 step), `happy` (about a minute from routing to completed), `outcome_unknown`, `refused`, `declined`,
 `unknown_state`, `expired`, and `consent` (a Reap-rail purchase: add `AGENPAS_CONSENT_ENABLED=1`; the card page and then

@@ -29,6 +29,10 @@
  *                                                  409 consent_required while the step's terms are not accepted;
  *                                                  409 address_not_requested when the gateway's read shows no form;
  *                                                  409 address_not_taken for the backend's other 409s.
+ *   POST /agenpas/api/p/:purchaseId/card-choice   ONLY while AGENPAS_CARD_PICKER_ENABLED is on: the card the buyer
+ *                                                  approves with, {handle} (JSON, token in `X-Agenpas-Link`). 409
+ *                                                  card_choice_not_offered when the gateway's own read shows no such
+ *                                                  card; 409 card_choice_stale / card_choice_closed from the backend.
  *
  * DARK BY DEFAULT. While AGENPAS_ENABLED is off every request is handed straight to `next()`, so an /agenpas path
  * answers exactly what it answered before this module existed (the app's normal not-found). The same happens while
@@ -77,6 +81,10 @@ const IMAGE_LIMIT = Object.freeze({ capacity: 5, refillPerSecond: 1 / 5 });
 // An image answer is the image alone: nothing in it may run, load or be framed.
 const IMAGE_CSP = "default-src 'none'; sandbox";
 const SHIPPING_PATH_RE = /^\/agenpas\/api\/p\/(?:pp|ap|rp)_[0-9a-f]{24}\/shipping-address$/;
+const CARD_CHOICE_PATH_RE = /^\/agenpas\/api\/p\/(?:pp|ap|rp)_[0-9a-f]{24}\/card-choice$/;
+// The card choice, per link token: a buyer presses Approve once or twice; 5 a minute only ever stops a script.
+const CARD_CHOICE_LIMIT = Object.freeze({ capacity: 5, refillPerSecond: 5 / 60 });
+const CARD_HANDLE_RE = /^[0-9a-f]{24}$/;
 
 function isJsonContentType(req) {
   return String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase() === 'application/json';
@@ -347,6 +355,7 @@ function createAgenpasRouter(deps = {}) {
   const limits = deps.limits || {};
   const tokenBuckets = createTokenBucketLimiter({ ...TOKEN_LIMIT, ...(limits.token || {}), now });
   const addressBuckets = createTokenBucketLimiter({ ...ADDRESS_LIMIT, ...(limits.address || {}), now });
+  const cardChoiceBuckets = createTokenBucketLimiter({ ...CARD_CHOICE_LIMIT, ...(limits.cardChoice || {}), now });
   const ipBuckets = createTokenBucketLimiter({ ...IP_LIMIT, ...(limits.ip || {}), now });
   const imageBuckets = createTokenBucketLimiter({ ...IMAGE_LIMIT, ...(limits.image || {}), now });
   const imageFetcher = deps.imageFetcher && typeof deps.imageFetcher.get === 'function' ? deps.imageFetcher : null;
@@ -417,7 +426,10 @@ function createAgenpasRouter(deps = {}) {
     const env = envOf();
     if (!config.isEnabled(env)) return next('router');
     const addressPost = req.method === 'POST' && SHIPPING_PATH_RE.test(req.path) && config.collectShipping(env);
-    if (req.method !== 'GET' && req.method !== 'HEAD' && !addressPost && !isConsentPost(req, env)) return next('router');
+    const cardChoicePost = req.method === 'POST' && CARD_CHOICE_PATH_RE.test(req.path) && config.cardPicker(env);
+    if (req.method !== 'GET' && req.method !== 'HEAD' && !addressPost && !cardChoicePost && !isConsentPost(req, env)) {
+      return next('router');
+    }
     if (!isAgenpasOrigin(req, env)) return next('router');
     return next();
   });
@@ -467,6 +479,7 @@ function createAgenpasRouter(deps = {}) {
       collectShipping: config.collectShipping(env),
       // Only while the flag is on: off, the projection is called exactly as before.
       ...(consentOn ? { consentEnabled: true, legalHosts: config.legalHosts(env) } : {}),
+      ...(config.cardPicker(env) ? { cardPicker: true } : {}),
     };
   }
 
@@ -651,6 +664,90 @@ function createAgenpasRouter(deps = {}) {
     }
     if (answer && answer.kind === 'not_found') return res.status(404).json({ error: 'not_found' });
     log('warn', { surface: 'address', outcome: 'unavailable', reason: (answer && typeof answer.code === 'string' && answer.code) || 'unknown' });
+    res.setHeader('Retry-After', String(UNAVAILABLE_RETRY_AFTER_SECONDS));
+    return res.status(503).json({ error: 'unavailable', retry_after_seconds: UNAVAILABLE_RETRY_AFTER_SECONDS });
+  });
+
+  /*
+   * THE CARD CHOICE (AGENPAS_CARD_PICKER_ENABLED; docs/agenpas.md, "Card choice"). JSON only (415), at most 4 KB (413),
+   * exactly {handle}, the link token in X-Agenpas-Link only (a header no cross-site form can send), 5 a minute per link
+   * (429) on top of the IP bucket. The handle goes on ONLY when the gateway's own fresh read shows the choice screen
+   * with that card: the backend then records it with a compare-and-swap of its own, and the token is asked for on it.
+   */
+  router.post('/agenpas/api/p/:purchaseId/card-choice', async (req, res) => {
+    const env = envOf();
+    setCommonHeaders(res);
+    const purchaseId = req.params.purchaseId;
+    if (!ipBuckets.allow(`ip:${digest(clientIpFromRequest(req) || 'unknown')}`)) return tooMany(res, 'card_choice', 'rate_limited_ip');
+    if (!PURCHASE_ID_RE.test(purchaseId)) return res.status(404).json({ error: 'link_invalid' });
+    if (!req._body && !isJsonContentType(req)) {
+      logRefusal({ surface: 'card_choice', reason: 'unsupported_media_type' });
+      return res.status(415).json({ error: 'unsupported_media_type' });
+    }
+    const token = firstString(req.headers[LINK_HEADER]);
+    const verdict = verify(token, purchaseId);
+    if (!verdict.ok) {
+      logRefusal({ surface: 'card_choice', reason: verdict.reason });
+      if (verdict.reason === REASON.noSecret) return res.status(503).json({ error: 'unavailable' });
+      if (verdict.reason === REASON.expired) return res.status(410).json({ error: 'link_expired', link_ttl_minutes: config.linkTtlMinutes(env) });
+      return res.status(404).json({ error: 'link_invalid' });
+    }
+    if (!cardChoiceBuckets.allow(`c:${digest(token)}`)) return tooMany(res, 'card_choice', 'rate_limited_token');
+    const parsed = await readSmallJsonBody(req);
+    if (!parsed.ok) {
+      logRefusal({ surface: 'card_choice', reason: parsed.error });
+      return res.status(parsed.status).json({ error: parsed.error });
+    }
+    const sent = parsed.body;
+    const handle = sent && typeof sent === 'object' && !Array.isArray(sent) && Object.keys(sent).length === 1
+      && typeof sent.handle === 'string' && CARD_HANDLE_RE.test(sent.handle) ? sent.handle : null;
+    if (!handle) {
+      logRefusal({ surface: 'card_choice', reason: 'invalid_card_choice' });
+      return res.status(400).json({ error: 'invalid_card_choice' });
+    }
+    const fixture = fixturesFor(req, env);
+    const reader = fixture ? fixtureReader : backendReader;
+    // A FRESH read (never the 2 s cache), and what it shows decides: the card goes on ONLY when the page would show the
+    // choice with that card on it (the flag on, A2A, locking, not held, not confirmed by another card).
+    forgetRead(verdict.claims, fixture);
+    const current = await readOnce(reader, verdict.claims, fixture);
+    if (!current || (current.kind !== 'accepted' && current.kind !== 'not_found')) {
+      res.setHeader('Retry-After', String(UNAVAILABLE_RETRY_AFTER_SECONDS));
+      return res.status(503).json({ error: 'unavailable', retry_after_seconds: UNAVAILABLE_RETRY_AFTER_SECONDS });
+    }
+    if (current.kind === 'not_found') return res.status(404).json({ error: 'not_found' });
+    const projected = projectPurchaseView(current.purchase, viewOptions(env, purchaseId, verdict.claims));
+    const choice = projected.screen === 'choose_card' ? projected.card_choice : null;
+    const card = choice ? choice.cards.find((c) => c.handle === handle) : null;
+    if (!card || (choice.confirmed && !card.selected)) {
+      logRefusal({ surface: 'card_choice', reason: 'not_offered' });
+      return res.status(409).json({ error: 'card_choice_not_offered' });
+    }
+    let answer;
+    try {
+      answer = reader && typeof reader.submitCardChoice === 'function'
+        ? await reader.submitCardChoice(verdict.claims, handle)
+        : { kind: 'unavailable', code: 'no_writer' };
+    } catch {
+      answer = { kind: 'unavailable', code: 'threw' };
+    }
+    // Whatever happened, the next poll reads afresh.
+    forgetRead(verdict.claims, fixture);
+    if (answer && answer.kind === 'accepted') {
+      const view = projectPurchaseView(answer.purchase, viewOptions(env, purchaseId, verdict.claims));
+      log('info', { surface: 'card_choice', outcome: 'accepted', state: view.state, screen: view.screen });
+      return res.status(200).json(view);
+    }
+    if (answer && answer.kind === 'stale') {
+      logRefusal({ surface: 'card_choice', reason: 'stale' });
+      return res.status(409).json({ error: 'card_choice_stale' });
+    }
+    if (answer && answer.kind === 'closed') {
+      logRefusal({ surface: 'card_choice', reason: 'closed' });
+      return res.status(409).json({ error: 'card_choice_closed' });
+    }
+    if (answer && answer.kind === 'not_found') return res.status(404).json({ error: 'not_found' });
+    log('warn', { surface: 'card_choice', outcome: 'unavailable', reason: (answer && typeof answer.code === 'string' && answer.code) || 'unknown' });
     res.setHeader('Retry-After', String(UNAVAILABLE_RETRY_AFTER_SECONDS));
     return res.status(503).json({ error: 'unavailable', retry_after_seconds: UNAVAILABLE_RETRY_AFTER_SECONDS });
   });
@@ -841,17 +938,19 @@ const ADMITTED_PATHS = [
 const DEV_PATHS = [/^\/agenpas\/dev\/start$/];
 const UNSAFE_PATH_RE = /[%\\]|\.\.|\/\/|\/\.(?:\/|$)/;
 
-// The ONE write the AgenPas host admits, only while address collection is on.
-const ADMITTED_POST_PATHS = [SHIPPING_PATH_RE];
+// The writes the AgenPas host admits besides the consent POST: the address (only while address collection is on) and
+// the card choice (only while the card picker is on).
 
 function admitted(req, env) {
-  // The non-GET shapes: the consent POST (only while AGENPAS_CONSENT_ENABLED is on) and the address POST (only while
-  // AGENPAS_COLLECT_SHIPPING is on). Everything else that is not GET/HEAD (OPTIONS included: no preflight is ever
+  // The non-GET shapes: the consent POST (only while AGENPAS_CONSENT_ENABLED is on), the address POST (only while
+  // AGENPAS_COLLECT_SHIPPING is on) and the card-choice POST (only while AGENPAS_CARD_PICKER_ENABLED is on). Everything else that is not GET/HEAD (OPTIONS included: no preflight is ever
   // answered here) is refused.
   if (isConsentPost(req, env)) return true;
   const raw = rawPathOf(req);
   if (UNSAFE_PATH_RE.test(raw)) return false;
-  if (req.method === 'POST') return config.collectShipping(env) && ADMITTED_POST_PATHS.some((re) => re.test(raw));
+  if (req.method === 'POST') {
+    return (config.collectShipping(env) && SHIPPING_PATH_RE.test(raw)) || (config.cardPicker(env) && CARD_CHOICE_PATH_RE.test(raw));
+  }
   if (req.method !== 'GET' && req.method !== 'HEAD') return false;
   if (ADMITTED_PATHS.some((re) => re.test(raw))) return true;
   return config.devFixturesEnabled(env) && isLoopbackHost(req) && DEV_PATHS.some((re) => re.test(raw));

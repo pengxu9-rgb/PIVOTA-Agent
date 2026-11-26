@@ -185,6 +185,25 @@ p:last-child { margin-bottom: 0; }
 .row dt { color: var(--muted); }
 .row dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 
+/* The card choice: the card row's Change, and the inline picker. */
+.card-row { align-items: center; }
+.card-row dd { flex: 1; display: flex; flex-direction: column; }
+.btn-change {
+  flex: none; min-height: 40px; padding: 0 16px; border: 0; border-radius: 999px;
+  background: var(--soft); color: var(--text); font: inherit; font-size: 14px; font-weight: 700; cursor: pointer;
+}
+.btn-change:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+.card-picker { margin: 18px 0 0; padding: 0; border: 0; min-width: 0; }
+.card-picker legend { padding: 0; font-weight: 700; }
+.card-option {
+  display: flex; align-items: center; gap: 12px; min-height: 60px; margin-top: 10px; padding: 0 16px;
+  border: 1px solid var(--line); border-radius: 16px; cursor: pointer;
+}
+.card-option.selected { border: 2px solid var(--accent); padding: 0 15px; }
+.card-option input { flex: none; width: 20px; height: 20px; margin: 0; accent-color: var(--accent); }
+.card-option-text { display: flex; flex-direction: column; }
+.card-option-label { font-weight: 600; }
+
 .btn {
   display: flex;
   align-items: center;

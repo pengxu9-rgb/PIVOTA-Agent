@@ -38,6 +38,16 @@
  * Outcomes: accepted {purchase} | invalid {field_errors} | consent_required | conflict | not_taken {code} | not_found |
  * unavailable {code}. The body (the
  * buyer's address) goes to the backend and NOWHERE else: never logged, never part of an outcome.
+ *
+ * THE CARD CHOICE (docs/agenpas.md, "Card choice"), same authentication:
+ *
+ *   POST {PIVOTA_API_BASE}/agent/internal/commerce/purchases/{purchase_id}/card-choice
+ *     body: {handle}   (a card's handle from the read's `card_choice.cards`)
+ *   200 -> the unified view            409 card_choice_stale -> the cards changed or the worker holds the purchase
+ *   409 card_choice_closed / card_choice_unavailable / any other 409 -> closed (nothing to choose here any more)
+ *   404 -> not that agent's
+ *
+ * Outcomes: accepted {purchase} | stale | closed {code} | not_found | unavailable {code}.
  */
 
 const { PURCHASE_ID_RE } = require('./linkToken');
@@ -228,7 +238,77 @@ function createBackendPurchaseReader(deps = {}) {
     return { kind: 'unavailable', code: status === 200 ? 'malformed' : `http_${status}` };
   }
 
-  return Object.freeze({ read, submitShippingAddress });
+  async function submitCardChoice(claims, handle) {
+    const purchaseId = claims && claims.purchaseId;
+    if (typeof purchaseId !== 'string' || !PURCHASE_ID_RE.test(purchaseId)) return { kind: 'not_found' };
+    let key = '';
+    try {
+      key = String(internalKey() || '').trim();
+    } catch {
+      key = '';
+    }
+    if (!baseUrl || !key || typeof fetchImpl !== 'function') {
+      log('warn', { op: 'card_choice', outcome: 'unavailable', code: 'unconfigured' });
+      return { kind: 'unavailable', code: 'unconfigured' };
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    let status;
+    let body;
+    try {
+      const res = await fetchImpl(`${baseUrl}${INTERNAL_PURCHASES_PATH}/${purchaseId}/card-choice`, {
+        method: 'POST',
+        headers: {
+          'X-Internal-Key': key,
+          'X-Agenpas-Agent-Id': claims.agentId,
+          'X-Agenpas-Agent-User-Ref': claims.userRef,
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ handle }),
+        signal: controller.signal,
+        redirect: 'error',
+      });
+      status = Number(res && res.status);
+      let text = '';
+      try {
+        text = typeof res.text === 'function' ? await res.text() : '';
+      } catch {
+        text = '';
+      }
+      body = text.length > MAX_BODY_CHARS ? undefined : parseJson(text);
+    } catch (err) {
+      const code = controller.signal.aborted || (err && err.name === 'AbortError') ? 'timeout' : 'transport';
+      log('warn', { op: 'card_choice', outcome: 'unavailable', code });
+      return { kind: 'unavailable', code };
+    } finally {
+      clearTimeout(timer);
+    }
+    if (status === 200 && isPlainObject(body) && typeof body.state === 'string'
+      && (body.purchase_id === purchaseId || body.rail_purchase_id === purchaseId)) {
+      log('info', { op: 'card_choice', outcome: 'accepted', http_status: status });
+      return { kind: 'accepted', purchase: body };
+    }
+    if (status === 409) {
+      const reason = reasonOf(body);
+      if (reason === 'card_choice_stale') {
+        log('info', { op: 'card_choice', outcome: 'stale', http_status: status });
+        return { kind: 'stale' };
+      }
+      const code = typeof reason === 'string' && /^[a-z_]{1,48}$/.test(reason) ? reason : 'unnamed';
+      log('info', { op: 'card_choice', outcome: 'closed', code, http_status: status });
+      return { kind: 'closed', code };
+    }
+    if (status === 404) {
+      log('info', { op: 'card_choice', outcome: 'not_found', http_status: status });
+      return { kind: 'not_found' };
+    }
+    const code = status === 200 ? 'malformed' : `http_${Number.isFinite(status) ? status : 'unknown'}`;
+    log('warn', { op: 'card_choice', outcome: 'unavailable', code, http_status: status });
+    return { kind: 'unavailable', code };
+  }
+
+  return Object.freeze({ read, submitShippingAddress, submitCardChoice });
 }
 
 /*

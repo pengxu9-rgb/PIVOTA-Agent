@@ -193,9 +193,11 @@ test('assets: served same-origin with nosniff; the script builds DOM without inn
   const fieldBlock = /var ADDRESS_ORDER = \[([^\]]+)\]/.exec(src);
   assert.deepEqual(fieldBlock[1].split(',').map((x) => x.trim().replace(/'/g, '')),
     ['email', 'firstName', 'lastName', 'phone', 'addressLine1', 'addressLine2', 'city', 'region', 'postalCode', 'country']);
-  // Two inputs: the address field, and the consent checkbox (gw#2605).
-  assert.equal((src.match(/el\('input'/g) || []).length, 2);
+  // Three inputs: the address field, the consent checkbox (gw#2605), and the card choice's radio, whose value is a
+  // card's per-purchase handle (never card data).
+  assert.equal((src.match(/el\('input'/g) || []).length, 3);
   assert.match(src, /input\.type = 'checkbox'/);
+  assert.match(src, /radio\.type = 'radio';\s*radio\.name = 'card';\s*radio\.value = c\.handle;/);
   assert.equal(/textarea/.test(src), false);
   assert.equal(/https?:\/\/(?!\/)/.test(src.replace(/\/\*[\s\S]*?\*\//g, '')), false, 'no absolute URLs (no CDN, no third party)');
   // The token: read from the fragment, the fragment cleared, sent only as the header; the query is never read,
