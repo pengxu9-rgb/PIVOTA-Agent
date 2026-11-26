@@ -95,13 +95,25 @@ function createProductImageFetcher(deps = {}) {
 
   async function fetchOnce(url) {
     if (typeof fetchImpl !== 'function') return { ok: false, reason: 'no_fetch' };
+    // Our own timer, not AbortSignal.timeout: that one is unref'd (Node 20 lets the loop end before it fires), and
+    // this one is cleared as soon as the fetch and its body are done. It bounds the body read too.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(new DOMException('image fetch timed out', 'TimeoutError')), timeoutMs);
+    try {
+      return await fetchAndSniff(url, controller.signal);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async function fetchAndSniff(url, signal) {
     let res;
     try {
       res = await fetchImpl(url, {
         method: 'GET',
         headers: { Accept: IMAGE_TYPES.join(', ') },
         redirect: 'error',
-        signal: AbortSignal.timeout(timeoutMs),
+        signal,
       });
     } catch (err) {
       // The error's code only: a message can echo the URL.
