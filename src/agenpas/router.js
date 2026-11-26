@@ -84,8 +84,9 @@ const IMAGE_LIMIT = Object.freeze({ capacity: 5, refillPerSecond: 1 / 5 });
 const IMAGE_CSP = "default-src 'none'; sandbox";
 const SHIPPING_PATH_RE = /^\/agenpas\/api\/p\/(?:pp|ap|rp)_[0-9a-f]{24}\/shipping-address$/;
 const CARD_CHOICE_PATH_RE = /^\/agenpas\/api\/p\/(?:pp|ap|rp)_[0-9a-f]{24}\/card-choice$/;
-// The card choice, per link token: a buyer presses Approve once or twice; 5 a minute only ever stops a script.
-const CARD_CHOICE_LIMIT = Object.freeze({ capacity: 5, refillPerSecond: 5 / 60 });
+// The card choice, per link token: one Approve is up to 3 POSTs (the page retries a stale answer twice), and a buyer may
+// press again after "Your saved cards changed": 10, refilling 10 a minute, only ever stops a script.
+const CARD_CHOICE_LIMIT = Object.freeze({ capacity: 10, refillPerSecond: 10 / 60 });
 const CARD_HANDLE_RE = /^[0-9a-f]{24}$/;
 
 function isJsonContentType(req) {

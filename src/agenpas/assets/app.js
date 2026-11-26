@@ -107,6 +107,9 @@
     cardConfirmed: false,
     // The radio that had the keyboard before a re-render (a handle): it gets the focus back.
     cardFocus: null,
+    // When the last card-choice POST was sent (ms): a poll that started before it answers with an older view, which is
+    // dropped (it would show the unconfirmed choice again after the confirmation).
+    cardPostAt: 0,
   };
 
   // ---- tiny DOM helpers ----------------------------------------------------------------------------------------
@@ -786,6 +789,7 @@
     if (ui.cardBusy) return;
     ui.cardBusy = true;
     ui.cardMessage = null;
+    ui.cardPostAt = Date.now();
     render();
     fetch('/agenpas/api/p/' + match[1] + '/card-choice', {
       method: 'POST',
@@ -1423,6 +1427,7 @@
     }
     ui.inFlight = true;
     ui.lastPollAt = Date.now();
+    var startedAt = ui.lastPollAt;
     fetch('/agenpas/api/p/' + match[1], {
       method: 'GET',
       headers: { Accept: 'application/json', 'X-Agenpas-Link': token },
@@ -1433,6 +1438,11 @@
       return res.json().catch(function () { return null; }).then(function (body) { return { status: res.status, body: body }; });
     }).then(function (r) {
       ui.inFlight = false;
+      if (r.status === 200 && r.body && typeof r.body.screen === 'string' && startedAt < ui.cardPostAt) {
+        // Read before the card was confirmed (or refused): older than what the page holds. Read again shortly.
+        schedule(POLL_MIN);
+        return;
+      }
       if (r.status === 200 && r.body && typeof r.body.screen === 'string') {
         syncConsent(r.body);
         trackAddressStep(r.body);

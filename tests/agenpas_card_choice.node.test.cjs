@@ -152,10 +152,14 @@ test('view: the approval terms first; when they cannot be offered here the step 
   assert.equal(ok.card_choice.consent_pending, undefined);
 });
 
-test('view: a card without four digits, or a date that is no date, refuses the whole choice', () => {
-  assert.equal(view(body('locking', { card_choice: choice({ cards: [{ ...choice().cards[0], last4: null }, choice().cards[1]] }) })).screen, 'confirming_total');
-  const odd = view(body('locking', { card_choice: choice({ cards: [{ ...choice().cards[0], added_at: '2026-13-05' }, choice().cards[1]] }) }));
-  assert.equal(odd.card_choice.cards[0].added_on, null);
+test('view: a card without four digits refuses the whole choice; a date that is no date drops to null', () => {
+  assert.equal(view(body('locking', { card_choice: choice({ cards: [{ ...choice().cards[0], last4: null }, choice().cards[1]] }) })).screen, 'unavailable');
+  for (const date of ['2026-13-05', '2026-02-31', '2026-04-31', '2026-00-10']) {
+    const odd = view(body('locking', { card_choice: choice({ cards: [{ ...choice().cards[0], added_at: date }, choice().cards[1]] }) }));
+    assert.equal(odd.card_choice.cards[0].added_on, null, date);
+  }
+  assert.equal(view(body('locking', { card_choice: choice({ cards: [{ ...choice().cards[0], added_at: '2028-02-29T00:00:00Z' }, choice().cards[1]] }) }))
+    .card_choice.cards[0].added_on, '2028-02-29');
 });
 
 test('view: the flag off, another rail, a held purchase or another state shows no choice at all', () => {
@@ -176,7 +180,7 @@ test('view: the flag off, another rail, a held purchase or another state shows n
   assert.equal(view(body('awaiting_buyer_authorization')).card_choice, undefined);
 });
 
-test('view: one bad card, two selected, none selected, too many or a passed deadline: no choice, never a repair', () => {
+test('view: one bad card, two selected, none selected, too many or a passed deadline: "not available", never a repair', () => {
   const bad = [
     choice({ cards: [{ ...choice().cards[0], handle: 'pm_rail_card_id' }, choice().cards[1]] }),
     choice({ cards: choice().cards.map((c) => ({ ...c, selected: true })) }),
@@ -191,7 +195,7 @@ test('view: one bad card, two selected, none selected, too many or a passed dead
   ];
   for (const c of bad) {
     const v = view(body('locking', { card_choice: c }));
-    assert.equal(v.screen, 'confirming_total', JSON.stringify(c));
+    assert.equal(v.screen, 'unavailable', JSON.stringify(c));
     assert.equal(v.card_choice, undefined);
   }
 });
@@ -303,13 +307,53 @@ test('POST: the backend\'s stale / closed / not found / outage answers', async (
   }
 });
 
-test('POST: 5 a minute per link (429 with Retry-After)', async () => {
+test('POST: 10 a minute per link (429 with Retry-After), per link: another link is unaffected', async () => {
   const a = app({ reader: fakeBackend() });
   const t = token();
-  for (let i = 0; i < 5; i += 1) assert.equal((await post(a, { handle: H2 }, t)).status, 200);
-  const sixth = await post(a, { handle: H2 }, t);
-  assert.equal(sixth.status, 429);
-  assert.ok(Number(sixth.headers['retry-after']) > 0);
+  for (let i = 0; i < 10; i += 1) assert.equal((await post(a, { handle: H2 }, t)).status, 200);
+  const eleventh = await post(a, { handle: H2 }, t);
+  assert.equal(eleventh.status, 429);
+  assert.ok(Number(eleventh.headers['retry-after']) > 0);
+  const other = mintLinkToken({ ...CLAIMS, userRef: 'usr_otherOtherOtherOther', secret: SECRET, now: NOW });
+  assert.equal((await post(a, { handle: H2 }, other)).status, 200);
+});
+
+test('POST: a lookalike host, another port, another scheme or another case of the Origin is refused (403)', async () => {
+  for (const origin of ['https://agenpas.example.evil.example', 'https://evil-agenpas.example', 'https://agenpas.example:8443',
+    'http://agenpas.example', 'https://AGENPAS.example', 'https://agenpas.examplex', 'null']) {
+    const reader = fakeBackend();
+    const res = await post(app({ reader }), { handle: H2 }, token(), origin);
+    assert.equal(res.status, 403, origin);
+    assert.equal(reader.calls.length, 0);
+  }
+});
+
+test('POST: decided on a FRESH read, never the 2 s cache (a cached read that offered the card does not count)', async () => {
+  let reads = 0;
+  const reader = fakeBackend({ read: () => { reads += 1; return reads === 1 ? body() : body('locking', { card_choice: choice({ cards: [choice().cards[0]] }) }); } });
+  const a = app({ reader });
+  const t = token();
+  const primed = await request(a).get(`/agenpas/api/p/${PID}`).set('X-Agenpas-Link', t);
+  assert.equal(primed.body.card_choice.cards.length, 2);  // the cached read offers H2
+  const res = await post(a, { handle: H2 }, t);
+  assert.equal(res.status, 409);
+  assert.equal(res.body.error, 'card_choice_not_offered');
+  assert.equal(reader.calls.filter((c) => c.op === 'submit').length, 0);
+});
+
+test('POST: a link for another purchase on this path is refused before any read', async () => {
+  const reader = fakeBackend();
+  const elsewhere = mintLinkToken({ ...CLAIMS, purchaseId: 'ap_fedcba9876543210fedcba98', secret: SECRET, now: NOW });
+  const res = await post(app({ reader }), { handle: H2 }, elsewhere);
+  assert.equal(res.status, 404);
+  assert.equal(reader.calls.length, 0);
+});
+
+test('config: the card choice counts only with the consent flag on too', async () => {
+  const reader = fakeBackend();
+  const res = await post(app({ env: { ...ENV_ON, AGENPAS_CONSENT_ENABLED: undefined }, reader }));
+  assert.equal(res.status, 404);
+  assert.equal(reader.calls.length, 0);
 });
 
 test('POST with AGENPAS_CARD_PICKER_ENABLED off (or AgenPas off): the route does not exist', async () => {

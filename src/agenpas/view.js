@@ -735,7 +735,7 @@ function paymentCardFor(raw, screen) {
 // locked waits for the buyer to confirm the card BEFORE any token is asked for. Read only from the top level (never
 // `detail`). Every card is checked again and never repaired: one bad card (a handle out of shape, or no four digits:
 // two cards the buyer cannot tell apart are no choice), two selected, or a deadline already passed, and there is no
-// choice at all (the page then shows "Confirming your total" as before). `handle` names the card for this purchase only
+// choice at all (the page then says "not available right now", never a spinner). `handle` names the card for this purchase only
 // (never the rail's card id); the network becomes a label from the fixed list above; `added_on` is a real calendar
 // date (YYYY-MM-DD) or null.
 const CARD_HANDLE_RE = /^[0-9a-f]{24}$/;
@@ -752,7 +752,9 @@ function cardChoiceFor(raw, nowMs) {
     seen.add(c.handle);
     if (typeof c.last4 !== 'string' || !LAST4_RE.test(c.last4)) return null;
     const last4 = c.last4;
-    const added = typeof c.added_at === 'string' ? CARD_ADDED_RE.exec(c.added_at) : null;
+    const match = typeof c.added_at === 'string' ? CARD_ADDED_RE.exec(c.added_at) : null;
+    // A real calendar date only (2026-02-31 is none).
+    const added = match && new Date(Date.UTC(+match[1], +match[2] - 1, +match[3])).getUTCDate() === +match[3] ? match : null;
     cards.push({
       handle: c.handle,
       label: cardLabelFor(c.network),
@@ -1002,8 +1004,11 @@ function buildView(body, {
   // the card while the secure page is got ready. The backend takes the card only after the approval step's terms (its
   // consent gate): unaccepted, they are offered here first (`consent_pending`), or, when they cannot be offered, the
   // step is "not available right now". Never an Approve the backend would refuse.
-  let cardChoice = cardPicker && screen === 'confirming_total' && rail === 'a2a' && !held
-    ? cardChoiceFor(src.card_choice, nowMs) : null;
+  const cardChoiceShown = cardPicker && screen === 'confirming_total' && rail === 'a2a' && !held
+    && src.card_choice !== undefined && src.card_choice !== null;
+  let cardChoice = cardChoiceShown ? cardChoiceFor(src.card_choice, nowMs) : null;
+  // A choice the backend sent that does not check out: never a spinner until its deadline, never a repaired choice.
+  if (cardChoiceShown && !cardChoice) screen = 'unavailable';
   if (cardChoice && !cardChoice.confirmed && !satisfiedFor('approval')) {
     if (consentEnabled && isOfferable(block, 'approval')) cardChoice = { ...cardChoice, consent_pending: true };
     else {
