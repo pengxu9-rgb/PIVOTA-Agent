@@ -507,13 +507,15 @@ createPublicNetworkFetch), no redirects, a 3 s timeout, at most 2 MiB, and the b
 fetch still running is never evicted). At most 8 store fetches run at once; one more is refused, never queued. The store
 is sent the URL, `GET` and one `Accept` header, nothing else: it never sees the buyer's IP, a cookie or the link.
 
-THE CARD. With the backend's `AGENPAS_PAYMENT_CARD_ENABLED` on, a Reap-rail body whose checkout is bound to a card
-carries `payment_card = {network, last4}`: the enrollment's two display attributes (no other card data exists on
-Pivota's side). The view passes it as `payment_card = {label, last4}` ONLY on the `approve` and `done` screens: the label
-is from a fixed list (Visa, Mastercard, American Express, Discover, JCB, UnionPay, Diners Club; anything else is
-"Card"), never the partner's word as is, and there is no member at all without exactly four digits. The page shows
-"Pay with Visa ending 4242" on the approval screen and "Paid with" on "Your order is placed". A held, stopped or
-earlier screen never names a card, whatever the body says.
+THE CARD. With the backend's `AGENPAS_PAYMENT_CARD_ENABLED` on, a body carries `payment_card = {network, last4}` once
+the purchase is bound to the card it pays with: on the Reap rail, the enrollment's two display attributes once the
+checkout is bound; on the A2A rail, the network and last four from the rail's own card list, recorded as the token is
+minted on that card (never the checkout answer's last four, which are the token's), and only while the purchase still
+names that card. No other card data exists on Pivota's side. The view passes it as `payment_card = {label, last4}` ONLY
+on the `approve` and `done` screens: the label is from a fixed list (Visa, Mastercard, American Express, Discover, JCB,
+UnionPay, Diners Club; anything else is "Card"), never the partner's word as is, and there is no member at all without
+exactly four digits. The page shows "Pay with Visa ending 4242" on the approval screen and "Paid with" on "Your order is
+placed". A held, stopped or earlier screen never names a card, whatever the body says.
 
 THE AGENT'S NAME. A body carries `agent_display_name` only when the backend names the purchase's agent: a name set by
 hand (`agents.buyer_display_name`), else the name the agent registered with in the developer portal after the backend's
