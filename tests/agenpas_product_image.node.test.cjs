@@ -176,7 +176,7 @@ test('the fetcher refuses what is not a JPEG, PNG or WebP of at most 2 MiB, and 
   }
 });
 
-test('at most IMAGE_MAX_IN_FLIGHT store fetches at once: one more is refused, never queued, and not cached', async () => {
+test('at most IMAGE_MAX_IN_FLIGHT store fetches at once: one more is refused, never queued, and not cached', { timeout: 5000 }, async () => {
   assert.equal(IMAGE_MAX_IN_FLIGHT, 8);
   const releases = [];
   const calls = [];
@@ -197,7 +197,7 @@ test('at most IMAGE_MAX_IN_FLIGHT store fetches at once: one more is refused, ne
   assert.equal(calls.length, IMAGE_MAX_IN_FLIGHT + 1);
 });
 
-test('a pending fetch is never evicted, so one URL is never fetched twice at once', async () => {
+test('a pending fetch is never evicted, so one URL is never fetched twice at once', { timeout: 5000 }, async () => {
   let release;
   const calls = [];
   const fetchImpl = (url) => {
@@ -225,6 +225,38 @@ test('the cached images stay within the byte budget: the oldest goes first', asy
   assert.equal(fetchImpl.calls.length, 3, 'the two newest are still cached');
   await f.get('https://cdn.example.com/1.jpg');
   assert.equal(fetchImpl.calls.length, 4, 'the oldest was evicted');
+});
+
+test('an answer that throws while it is read is a refusal and gives its in-flight slot back', { timeout: 5000 }, async () => {
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    return { get status() { throw new Error('broken answer'); } };
+  };
+  const f = createProductImageFetcher({ fetchImpl });
+  for (let i = 0; i < IMAGE_MAX_IN_FLIGHT + 2; i += 1) {
+    assert.deepEqual(await f.get(`https://cdn.example.com/${i}.jpg`), { ok: false, reason: 'threw' });
+  }
+  assert.equal(calls, IMAGE_MAX_IN_FLIGHT + 2, 'every slot came back: none was refused as busy');
+});
+
+test('a refused fetch gives its in-flight slot back', { timeout: 5000 }, async () => {
+  const fetchImpl = stubFetch([{ status: 404, body: JPEG }, { status: 200, body: JPEG }]);
+  const f = createProductImageFetcher({ fetchImpl, maxInFlight: 1 });
+  assert.deepEqual(await f.get('https://cdn.example.com/a.jpg'), { ok: false, reason: 'status' });
+  assert.equal((await f.get('https://cdn.example.com/b.jpg')).ok, true);
+  assert.equal(fetchImpl.calls.length, 2);
+});
+
+test('a refusal adds nothing to the byte budget', { timeout: 5000 }, async () => {
+  // Room for exactly one image: a refusal that counted bytes would push the next image over and evict it.
+  const fetchImpl = stubFetch([{ status: 404, body: JPEG }, { status: 200, body: JPEG }, { status: 200, body: JPEG }]);
+  const f = createProductImageFetcher({ fetchImpl, maxCacheBytes: JPEG.length });
+  await f.get('https://cdn.example.com/refused.jpg');
+  await f.get('https://cdn.example.com/kept.jpg');
+  await f.get('https://cdn.example.com/refused.jpg');  // still the cached refusal
+  await f.get('https://cdn.example.com/kept.jpg');     // still the cached image
+  assert.equal(fetchImpl.calls.length, 2);
 });
 
 test('the fetcher without a fetch refuses; a timeout is its own reason', async () => {

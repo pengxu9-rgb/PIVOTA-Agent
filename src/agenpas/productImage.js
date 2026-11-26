@@ -132,6 +132,16 @@ function createProductImageFetcher(deps = {}) {
     return { ok: true, type, body };
   }
 
+  // ALWAYS settles: anything fetchOnce throws (a Response whose getters throw, say) is a refusal, so the in-flight slot
+  // is given back and the entry stops being pending. Without this one bad answer would hold a slot until restart.
+  async function settledFetch(url) {
+    try {
+      return await fetchOnce(url);
+    } catch {
+      return { ok: false, reason: 'threw' };
+    }
+  }
+
   function get(url) {
     const t = now();
     const hit = cache.get(url);
@@ -143,7 +153,7 @@ function createProductImageFetcher(deps = {}) {
     if (cache.size >= IMAGE_CACHE_MAX_ENTRIES) return Promise.resolve({ ok: false, reason: 'busy' });
     const entry = { pending: true, until: 0, bytes: 0, promise: null };
     inFlight += 1;
-    entry.promise = fetchOnce(url).then((answer) => {
+    entry.promise = settledFetch(url).then((answer) => {
       inFlight -= 1;
       entry.pending = false;
       entry.until = now() + (answer.ok ? IMAGE_CACHE_MS : IMAGE_REFUSAL_CACHE_MS);
