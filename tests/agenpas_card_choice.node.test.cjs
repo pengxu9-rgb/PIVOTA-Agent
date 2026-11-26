@@ -477,3 +477,85 @@ test('fixture card_choice: the choice, the other card confirmed, then the approv
   assert.equal(approving.body.screen, 'approve');
   assert.deepEqual(approving.body.payment_card, { label: 'Visa', last4: '1881' });
 });
+
+// ---- "Add a new card" (the backend's {new_card: true}) ----------------------------------------------------------
+
+test('view: the backend\'s new_card is carried while the choice is open, dropped once confirmed', () => {
+  assert.equal(view(body('locking', { card_choice: choice({ new_card: true }) })).card_choice.new_card, true);
+  assert.equal(view(body()).card_choice.new_card, undefined);
+  const confirmed = view(body('locking', { card_choice: choice({ confirmed: true, expires_at: null, new_card: true }) }));
+  assert.equal(confirmed.card_choice.new_card, undefined);
+  assert.equal(view(body('locking', { card_choice: choice({ new_card: 'true' }) })).card_choice.new_card, undefined);
+});
+
+test('POST {new_card: true}: forwarded while the choice is open; the next view comes back', async () => {
+  const reader = fakeBackend({ submit: () => ({ kind: 'accepted', purchase: body('needs_payment_method', { card_choice: undefined }) }) });
+  const res = await post(app({ reader }), { new_card: true });
+  assert.equal(res.status, 200);
+  const submit = reader.calls.find((c) => c.op === 'submit');
+  assert.deepEqual(submit.handle, { newCard: true });
+});
+
+test('POST {new_card: true}: refused in the gateway once confirmed, before the terms, or off the choice screen', async () => {
+  for (const [read, status, error] of [
+    [body('locking', { card_choice: choice({ confirmed: true, expires_at: null }) }), 409, 'card_choice_not_offered'],
+    [body('locking', { consent: OFFERED }), 409, 'consent_required'],
+    [body('awaiting_buyer_authorization'), 409, 'card_choice_not_offered'],
+  ]) {
+    const reader = fakeBackend({ read });
+    const res = await post(app({ reader }), { new_card: true });
+    assert.equal(res.status, status);
+    assert.equal(res.body.error, error);
+    assert.equal(reader.calls.filter((c) => c.op === 'submit').length, 0);
+  }
+});
+
+test('POST: a saved card after a new card was asked for is refused in the gateway (nothing sent)', async () => {
+  const reader = fakeBackend({ read: body('locking', { card_choice: choice({ new_card: true }) }) });
+  const res = await post(app({ reader }), { handle: H2 });
+  assert.equal(res.status, 409);
+  assert.equal(res.body.error, 'card_choice_not_offered');
+  assert.equal(reader.calls.filter((c) => c.op === 'submit').length, 0);
+});
+
+test('POST: only exactly {new_card: true} (400 for false, a string, or with a handle)', async () => {
+  for (const payload of [{ new_card: false }, { new_card: 'true' }, { new_card: 1 }, {}, { new_card: true, handle: H1 }, { newCard: true }]) {
+    const reader = fakeBackend();
+    const res = await post(app({ reader }), payload);
+    assert.equal(res.status, 400, JSON.stringify(payload));
+    assert.equal(reader.calls.length, 0);
+  }
+});
+
+test('writer: {newCard: true} is sent as exactly {new_card: true}', async () => {
+  const stub = stubFetch({ status: 200, body: body() });
+  const writer = createBackendPurchaseReader({ baseUrl: 'https://backend.internal.example', internalKey: () => 'k', fetchImpl: stub.fetchImpl });
+  assert.equal((await writer.submitCardChoice(CLAIMS, { newCard: true })).kind, 'accepted');
+  assert.deepEqual(JSON.parse(stub.calls[0].init.body), { new_card: true });
+});
+
+test('fixture card_choice: "Add a new card" goes through the card page (its terms first) to the approval on the new card', async () => {
+  const local = { ...ENV_ON, AGENPAS_DEV_FIXTURES: '1', AGENPAS_PUBLIC_BASE_URL: 'http://localhost:4000', AGENPAS_HOSTED_HOSTS: 'hosted.example' };
+  let clock = NOW + 60_000;  // a link of its own (the fixture keeps what each link chose)
+  const a = express();
+  a.use(createAgenpasRouter({ reader: fakeBackend(), env: local, now: () => clock, limits: { ip: { capacity: 1000 } } }));
+  const start = await request(a, 'localhost:4000').get('/agenpas/dev/start?scenario=card_choice');
+  const loc = new URL(start.headers.location, 'http://localhost');
+  const id = SCENARIOS.card_choice.id;
+  const t = new URLSearchParams(loc.hash.slice(1)).get('t');
+  const get = () => request(a, 'localhost:4000').get(`/agenpas/api/p/${id}`).set('X-Agenpas-Link', t);
+  const postJson = (path, payload) => request(a, 'localhost:4000').post(path).set('X-Agenpas-Link', t)
+    .set('Origin', 'http://localhost:4000').set('Content-Type', 'application/json').send(JSON.stringify(payload));
+  const agree = async (consent) => postJson(`/agenpas/api/p/${id}/consent`, { step: consent.step, offer_id: consent.offer.id, issued_at: consent.offer.issued_at });
+  const first = await get();
+  assert.equal((await agree(first.body.consent)).status, 200);
+  const asked = await postJson(`/agenpas/api/p/${id}/card-choice`, { new_card: true });
+  assert.equal(asked.status, 200);
+  assert.equal(asked.body.screen, 'add_card');
+  assert.equal(asked.body.consent.step, 'card_binding');
+  assert.equal((await agree(asked.body.consent)).status, 200);
+  clock += 12000;
+  const approving = await get();
+  assert.equal(approving.body.screen, 'approve');
+  assert.deepEqual(approving.body.payment_card, { label: 'Visa', last4: '7777' });
+});

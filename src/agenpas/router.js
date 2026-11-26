@@ -30,7 +30,8 @@
  *                                                  409 address_not_requested when the gateway's read shows no form;
  *                                                  409 address_not_taken for the backend's other 409s.
  *   POST /agenpas/api/p/:purchaseId/card-choice   ONLY while AGENPAS_CARD_PICKER_ENABLED is on: the card the buyer
- *                                                  approves with, {handle} (JSON, token in `X-Agenpas-Link`, exact
+ *                                                  approves with, {handle}, or {new_card: true} for "Add a new card"
+ *                                                  (JSON, token in `X-Agenpas-Link`, exact
  *                                                  Origin, Sec-Fetch-Site same-origin when sent, or 403). 409
  *                                                  card_choice_not_offered when the gateway's own read shows no such
  *                                                  card; 409 consent_required before the approval terms; 409
@@ -714,9 +715,11 @@ function createAgenpasRouter(deps = {}) {
       return res.status(parsed.status).json({ error: parsed.error });
     }
     const sent = parsed.body;
-    const handle = sent && typeof sent === 'object' && !Array.isArray(sent) && Object.keys(sent).length === 1
-      && typeof sent.handle === 'string' && CARD_HANDLE_RE.test(sent.handle) ? sent.handle : null;
-    if (!handle) {
+    const single = sent && typeof sent === 'object' && !Array.isArray(sent) && Object.keys(sent).length === 1;
+    const handle = single && typeof sent.handle === 'string' && CARD_HANDLE_RE.test(sent.handle) ? sent.handle : null;
+    // Or exactly {new_card: true}: the buyer chose "Add a new card" (the backend then opens the card page).
+    const newCard = single && sent.new_card === true;
+    if (!handle && !newCard) {
       logRefusal({ surface: 'card_choice', reason: 'invalid_card_choice' });
       return res.status(400).json({ error: 'invalid_card_choice' });
     }
@@ -733,8 +736,13 @@ function createAgenpasRouter(deps = {}) {
     if (current.kind === 'not_found') return res.status(404).json({ error: 'not_found' });
     const projected = projectPurchaseView(current.purchase, viewOptions(env, purchaseId, verdict.claims));
     const choice = projected.screen === 'choose_card' ? projected.card_choice : null;
-    const card = choice ? choice.cards.find((c) => c.handle === handle) : null;
-    if (!card || (choice.confirmed && !card.selected)) {
+    const card = choice && handle ? choice.cards.find((c) => c.handle === handle) : null;
+    // A new card: only while the choice is open (or already asked for); a saved card: only one the read offers (a
+    // confirmed choice: only its own card again), never after a new card was asked for.
+    const offered = newCard
+      ? Boolean(choice && !choice.confirmed)
+      : Boolean(card && !choice.new_card && (!choice.confirmed || card.selected));
+    if (!offered) {
       logRefusal({ surface: 'card_choice', reason: 'not_offered' });
       return res.status(409).json({ error: 'card_choice_not_offered' });
     }
@@ -746,7 +754,7 @@ function createAgenpasRouter(deps = {}) {
     let answer;
     try {
       answer = reader && typeof reader.submitCardChoice === 'function'
-        ? await reader.submitCardChoice(verdict.claims, handle)
+        ? await reader.submitCardChoice(verdict.claims, newCard ? { newCard: true } : handle)
         : { kind: 'unavailable', code: 'no_writer' };
     } catch {
       answer = { kind: 'unavailable', code: 'threw' };

@@ -769,7 +769,8 @@ function cardChoiceFor(raw, nowMs) {
     const expires = isoOrNull(raw.expires_at, nowMs);
     if (!expires.iso || expires.past) return null;
   }
-  return { confirmed, cards };
+  // The buyer asked to add a new card (the backend's `new_card`): the page waits for the card page.
+  return raw.new_card === true && !confirmed ? { confirmed, new_card: true, cards } : { confirmed, cards };
 }
 
 // ---- the agent's name ---------------------------------------------------------------------------------------------

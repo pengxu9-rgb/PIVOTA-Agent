@@ -1412,3 +1412,112 @@ test('product image: an image the browser cannot draw removes its slot and the i
   assert.equal(h.app.all((n) => /hero-item-with-image/.test(n.className)).length, 0);
   assert.equal(h.app.all((n) => n.className === 'hero-item').length, 1);
 });
+
+
+// ---- the card choice (AGENPAS_CARD_PICKER_ENABLED): the exact body, one POST, the labels ---------------------------
+
+const H_NEWEST = 'a'.repeat(24);
+const H_OLDER = 'b'.repeat(24);
+
+function choiceView(over = {}) {
+  return view({
+    state: 'locking', screen: 'choose_card', action: null,
+    amounts: { unit_price_minor: 1800, quoted_total_minor: 2349, final_total_minor: null, shipping_minor: 399, tax_minor: 150 },
+    card_choice: {
+      confirmed: false,
+      cards: [
+        { handle: H_NEWEST, label: 'Visa', last4: '4242', added_on: '2026-11-20', selected: true },
+        { handle: H_OLDER, label: 'Visa', last4: '1881', added_on: '2026-10-02', selected: false },
+      ],
+    },
+    ...over,
+  });
+}
+
+const buttons = (h, text) => h.app.all((n) => n.tagName === 'BUTTON' && n.textContent.includes(text));
+const click = (node) => (node.listeners.click || []).forEach((fn) => fn({ preventDefault() {} }));
+const radio = (h, value) => h.app.all((n) => n.tagName === 'INPUT' && n.value === value)[0];
+const cardPosts = (h) => h.fetches.filter((f) => /\/card-choice$/.test(f.url));
+
+test('card choice: Approve posts exactly the selected card\'s {handle}, once, with the link header', async () => {
+  const h = harness({ answers: [{ status: 200, body: choiceView() }, { status: 200, body: choiceView({ card_choice: { ...choiceView().card_choice, confirmed: true } }) }] });
+  h.start();
+  await settle();
+  const [approve] = buttons(h, 'Approve $23.49');
+  assert.ok(approve, h.text());
+  click(approve);
+  click(approve);  // a double click: still one POST
+  await settle();
+  const posts = cardPosts(h);
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0].init.method, 'POST');
+  assert.equal(posts[0].init.headers['X-Agenpas-Link'], TOKEN);
+  assert.deepEqual(JSON.parse(posts[0].init.body), { handle: H_NEWEST });
+  assert.match(h.text(), /Getting the secure page ready/);
+});
+
+test('card choice: Change, the other card, Use this card: Approve posts exactly that card', async () => {
+  const h = harness({ answers: [{ status: 200, body: choiceView() }, { status: 200, body: choiceView() }] });
+  h.start();
+  await settle();
+  click(buttons(h, 'Change')[0]);
+  const other = radio(h, H_OLDER);
+  other.checked = true;
+  (other.listeners.change || []).forEach((fn) => fn());
+  click(buttons(h, 'Use this card')[0]);
+  assert.match(h.text(), /Visa ending 1881/);
+  click(buttons(h, 'Approve $23.49')[0]);
+  await settle();
+  assert.deepEqual(JSON.parse(cardPosts(h)[0].init.body), { handle: H_OLDER });
+});
+
+test('card choice: "Add a new card" posts exactly {new_card: true}, once; then the card page wait, and no Change', async () => {
+  const asked = choiceView({ card_choice: { ...choiceView().card_choice, new_card: true } });
+  const h = harness({ answers: [{ status: 200, body: choiceView() }, { status: 200, body: asked }] });
+  h.start();
+  await settle();
+  click(buttons(h, 'Change')[0]);
+  const add = radio(h, 'new');
+  assert.ok(add, 'the picker offers "Add a new card"');
+  add.checked = true;
+  (add.listeners.change || []).forEach((fn) => fn());
+  const [use] = buttons(h, 'Add a new card').filter((b) => b.className.includes('btn-primary'));
+  click(use);
+  assert.match(h.text(), /A new card/);
+  assert.match(h.text(), /You'll add it on the secure page/);
+  const [approve] = buttons(h, 'Add card and approve $23.49');
+  assert.ok(approve, h.text());
+  click(approve);
+  click(approve);
+  await settle();
+  const posts = cardPosts(h);
+  assert.equal(posts.length, 1);
+  assert.deepEqual(JSON.parse(posts[0].init.body), { new_card: true });
+  assert.match(h.text(), /Getting the secure card page ready/);
+  assert.equal(buttons(h, 'Change').length, 0);
+});
+
+test('card choice: once the backend says a new card was asked for, no Change and the card page wait', async () => {
+  const h = harness({ answers: [{ status: 200, body: choiceView({ card_choice: { ...choiceView().card_choice, new_card: true } }) }] });
+  h.start();
+  await settle();
+  assert.equal(buttons(h, 'Change').length, 0);
+  assert.equal(buttons(h, 'Approve').length, 0);
+  assert.match(h.text(), /Getting the secure card page ready/);
+});
+
+test('card choice: a refused new-card POST says so in its own words, never "Your saved cards changed"', async () => {
+  const h = harness({ answers: [{ status: 200, body: choiceView() }, { status: 409, body: { error: 'card_choice_not_offered' } },
+    { status: 200, body: choiceView() }] });
+  h.start();
+  await settle();
+  click(buttons(h, 'Change')[0]);
+  const add = radio(h, 'new');
+  add.checked = true;
+  (add.listeners.change || []).forEach((fn) => fn());
+  click(buttons(h, 'Add a new card').filter((b) => b.className.includes('btn-primary'))[0]);
+  click(buttons(h, 'Add card and approve')[0]);
+  await settle();
+  assert.match(h.text(), /We couldn't start adding a new card/);
+  assert.doesNotMatch(h.text(), /Your saved cards changed/);
+});
