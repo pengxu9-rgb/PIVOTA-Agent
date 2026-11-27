@@ -18,6 +18,10 @@ const ADDRESS_FIELDS = Object.freeze([
   'email', 'firstName', 'lastName', 'phone', 'addressLine1', 'addressLine2', 'city', 'region', 'postalCode', 'country',
 ]);
 const OPTIONAL_FIELDS = new Set(['addressLine2']);
+// Left out of the "names no fields, so asks for all" fallback: the payment partner asks for neither a state nor a ZIP,
+// and the store's own checkout asks if it needs one. A request that LISTS them still requires them (the backend's
+// word); the page offers them as optional only when it adds them itself.
+const NOT_ASKED_BY_DEFAULT = new Set(['region', 'postalCode']);
 
 // Spellings the backend might use in `fields_missing` / `prefill` -> the door's name. Only this table changes when it does.
 const FIELD_ALIASES = Object.freeze({
@@ -77,8 +81,9 @@ function readAddressRequest(state, rawAction, { now } = {}) {
   if (!PRE_PLACING.has(state) || (!asks && state !== STATE)) return null;
   const listed = asks && Array.isArray(rawAction.fields_missing) ? rawAction.fields_missing : [];
   const fields = [...new Set(listed.map(canonicalField).filter(Boolean))];
-  // A state that asks without naming fields asks for all of them.
-  const missing = fields.length ? ADDRESS_FIELDS.filter((f) => fields.includes(f)) : (asks && listed.length ? [] : [...ADDRESS_FIELDS]);
+  // A state that asks without naming fields asks for all of them but the state and the ZIP (NOT_ASKED_BY_DEFAULT).
+  const missing = fields.length ? ADDRESS_FIELDS.filter((f) => fields.includes(f))
+    : (asks && listed.length ? [] : ADDRESS_FIELDS.filter((f) => !NOT_ASKED_BY_DEFAULT.has(f)));
   if (!missing.length) return null;
   const expires = asks ? iso(rawAction.expires_at, nowMs) : { iso: null, past: false };
   if (expires.past) return null;

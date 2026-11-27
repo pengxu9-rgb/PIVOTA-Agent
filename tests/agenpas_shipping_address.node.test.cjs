@@ -125,8 +125,9 @@ test('adapter: a shipping_address next_action in a pre-placing state is an addre
   for (const state of ['placing', 'completed', 'failed', 'refused', 'expired']) {
     assert.equal(readAddressRequest(state, addressAction(), { now: NOW }), null, state);
   }
-  // The state alone (no action) asks for every field.
-  assert.deepEqual(readAddressRequest('needs_shipping_address', null, { now: NOW }).fields_missing, [...ADDRESS_FIELDS]);
+  // The state alone (no action) asks for every field but the state and the ZIP (never asked for by default).
+  assert.deepEqual(readAddressRequest('needs_shipping_address', null, { now: NOW }).fields_missing,
+    ADDRESS_FIELDS.filter((f) => f !== 'region' && f !== 'postalCode'));
   // Unknown field names only, past or unreadable deadline: no request.
   assert.equal(readAddressRequest('routing', addressAction({ fields_missing: ['shoe_size'] }), { now: NOW }), null);
   assert.equal(readAddressRequest('routing', addressAction({ expires_at: '2026-11-18T11:00:00Z' }), { now: NOW }), null);
@@ -217,6 +218,21 @@ test('validation: every rule answers a CODE per field, never the value', () => {
   assert.equal(validateAddress({}, { required: [] }).field_errors._body, 'empty');
   assert.equal(validateAddress('x').ok, false);
   assert.equal(US_STATES.length, 51);
+});
+
+test('validation: the state and ZIP are required only when the request lists them; one given is still checked', () => {
+  const { region, postalCode, ...bare } = ADDRESS; // eslint-disable-line no-unused-vars
+  const fallback = readAddressRequest('needs_shipping_address', null, { now: NOW }).fields_missing; // names no fields
+  const out = validateAddress(bare, { required: fallback });
+  assert.equal(out.ok, true);
+  assert.equal('region' in out.value || 'postalCode' in out.value, false);
+  assert.deepEqual(validateAddress({ ...bare, region: 'ZZ' }, { required: fallback }).field_errors, { region: 'invalid_region' });
+  assert.deepEqual(validateAddress({ ...bare, postalCode: '941' }, { required: fallback }).field_errors,
+    { postalCode: 'invalid_postal_code' });
+  // Listed by the backend (a backend that still requires them): required, as the backend will answer.
+  assert.deepEqual(validateAddress(bare, { required: ADDRESS_FIELDS }).field_errors,
+    { region: 'required', postalCode: 'required' });
+  assert.deepEqual(validateAddress({}, { required: ['postalCode'] }).field_errors, { postalCode: 'required' });
 });
 
 test('the backend\'s field errors are kept only as {known field: code}', () => {
