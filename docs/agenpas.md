@@ -273,7 +273,11 @@ block, no block), the step is "not available right now", never an Approve the ba
 
 **The page**: "Approve your purchase", the card it will pay with ("Visa ending 4242 · Added Nov 20") and, with more
 than one card, **Change**, which opens the list in place ("Choose a card", one radio per card, "Use this card"). The
-buyer's pick stays in memory only. **Approve** posts the card; the page then shows the card and "Getting the secure page
+buyer's pick stays in memory only. While the approval terms are still to accept, the screen shows the card (with
+Change), the terms and ONE button, **"Agree and approve $X"** ("Agree and add card and approve $X" for a new card): the
+tap records the terms and then posts the card (and, on desktop, opens the approval popup inside that same tap). If the
+terms are not recorded, no card is sent and that popup is closed (staging run-through 11-27: "Agree and continue" then
+Approve was one tap too many). **Approve** posts the card; the page then shows the card and "Getting the secure page
 ready…" while the backend asks for the token. On desktop, Approve also opens the popup inside that tap ("Getting the
 secure page ready…") and the approval page is loaded into it as soon as a read carries it: no second tap (staging
 run-through 11-27). Only from the buyer's own tap on this page (memory only), once, given up after 3 minutes or as soon
