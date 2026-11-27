@@ -463,7 +463,11 @@
     }
   }
 
-  function consentBlock(view) {
+  // `opts` (the card choice only): { label, onTap, then }. ONE tap agrees AND approves (staging run-through 11-27: a
+  // separate "Agree and continue" then "Approve" was one tap too many): `label` replaces "Agree and continue", `onTap`
+  // runs inside the buyer's own tap (it opens the approval popup), and `then` runs once the consent is recorded (it
+  // posts the card), instead of waiting for the next read to show Approve.
+  function consentBlock(view, opts) {
     var offered = view.consent;
     var c = ui.consent;
     var box = el('div', 'consent');
@@ -497,9 +501,15 @@
     append(label, input, el('span', null, 'I agree to the Terms of Service and Privacy Policy'));
     box.appendChild(label);
 
-    var button = el('button', 'btn btn-primary', c && c.posting ? 'Saving…' : 'Agree and continue');
+    var buttonLabel = opts && opts.label ? opts.label : 'Agree and continue';
+    var button = el('button', 'btn btn-primary', c && c.posting ? 'Saving…' : buttonLabel);
     button.type = 'button';
-    button.addEventListener('click', function () { submitConsent(); });
+    button.addEventListener('click', function () {
+      if (!consentReady()) return;
+      if (opts && typeof opts.onTap === 'function') opts.onTap();
+      if (ui.consent) ui.consent.then = opts && typeof opts.then === 'function' ? opts.then : null;
+      submitConsent();
+    });
     box.appendChild(button);
     var errorEl = el('p', 'fine consent-error', c && c.error ? c.error : '');
     errorEl.setAttribute('role', 'status');
@@ -547,10 +557,20 @@
           ui.addressConsentNote = null;
           ui.addressSentBack = false;
         }
+        var then = c.then;
+        c.then = null;
+        if (then) {
+          // The card choice's one tap: the terms are recorded, so the card goes now (its own answer is the next view).
+          then();
+          return;
+        }
         render();
         pollNow();
         return;
       }
+      // Not recorded: whatever the tap opened for the approval goes, and the card is not sent.
+      c.then = null;
+      closePendingPopup();
       if (r.status === 410) {
         showExpired(r.body && r.body.link_ttl_minutes);
         return;
@@ -599,7 +619,11 @@
       }
       consentError("We couldn't save that just now. Please try again.");
     }).catch(function () {
-      if (ui.consent === c) consentError("We couldn't save that just now. Please try again.");
+      if (ui.consent === c) {
+        c.then = null;
+        closePendingPopup();
+        consentError("We couldn't save that just now. Please try again.");
+      }
     });
   }
 
@@ -786,11 +810,19 @@
       card.appendChild(note);
     }
     // The approval terms first: the card is part of what the buyer approves. Approve appears once they are accepted.
+    var verb = wantsNew ? 'Add card and approve' : 'Approve';
     if (choice.consent_pending) {
-      if (view.consent) card.appendChild(consentBlock(view));
+      // ONE tap: the terms, the card and (for a saved card) the approval popup, together.
+      var picked = wantsNew ? { new_card: true } : { handle: current.handle };
+      if (view.consent) {
+        card.appendChild(consentBlock(view, {
+          label: 'Agree and ' + (wantsNew ? 'add card and approve' : 'approve') + (quoted ? ' ' + quoted : ''),
+          onTap: function () { if (!wantsNew && !ui.cardBusy) preOpenApproval(); },
+          then: function () { submitCardChoice(picked); },
+        }));
+      }
       return card;
     }
-    var verb = wantsNew ? 'Add card and approve' : 'Approve';
     var approve = el('button', 'btn btn-primary', ui.cardBusy ? 'Approving…' : quoted ? verb + ' ' + quoted : verb);
     approve.type = 'button';
     approve.disabled = ui.cardBusy;

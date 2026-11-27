@@ -1771,3 +1771,105 @@ test('hosted popups: the card page closes once the card is in; never on "not ava
   await settle();
   assert.equal(pop.opened[0].w.closed, true, 'closed: the card is in, the choice is on screen');
 });
+
+// ---- one tap: agree AND approve on the card choice (staging run-through 11-27) --------------------------------------
+//
+// With the approval terms still to accept, the card choice shows the card, the terms and ONE button, "Agree and approve
+// $X". The tap opens the approval popup (desktop), records the terms, then posts the card: no separate "Agree and
+// continue" before Approve.
+
+function pendingChoiceView(over = {}) {
+  return choiceView({
+    card_choice: { ...choiceView().card_choice, consent_pending: true },
+    consent: { step: 'approval', terms_url: 'https://legal.example/terms', privacy_url: 'https://legal.example/privacy', offer: { ...OFFER } },
+    ...over,
+  });
+}
+const onetap = (h, text = 'Agree and approve $23.49') => buttons(h, text)[0];
+
+test('one tap: "Agree and approve $X" records the terms, then posts the card, in that order, from one tap', async () => {
+  const h = harness({ answers: [{ status: 200, body: pendingChoiceView() }] });
+  h.start();
+  await settle();
+  assert.match(h.text(), /Visa ending 4242/);
+  assert.match(h.text(), /Before you approve, read Pivota's/);
+  assert.equal(buttons(h, 'Agree and continue').length, 0, 'no separate agree button');
+  assert.equal(buttons(h, 'Change').length, 1, 'the card can still be changed first');
+  const btn = onetap(h);
+  assert.ok(btn, h.text());
+  assert.equal(btn.disabled, true, 'not before the box is ticked and the dwell has passed');
+  tick(h, checkbox(h));
+  advance(h, 4100);
+  assert.equal(onetap(h).disabled, false);
+  h.answer({ status: 200, body: { recorded: true } }, { status: 200, body: confirmedChoice() });
+  click(onetap(h));
+  await settle();
+  const posts = h.fetches.filter((f) => f.init.method === 'POST');
+  assert.deepEqual(posts.map((f) => f.url.split('/').pop()), ['consent', 'card-choice']);
+  assert.deepEqual(JSON.parse(posts[0].init.body), { step: 'approval', offer_id: OFFER.id, issued_at: OFFER.issued_at });
+  assert.deepEqual(JSON.parse(posts[1].init.body), { handle: H_NEWEST });
+  assert.match(h.text(), /Getting the secure page ready/);
+});
+
+test('one tap on desktop: the popup opens in the tap, before either POST, and the approval page fills it with no second tap', async () => {
+  const pop = popupRecorder();
+  const h = harness({ desktop: true, open: pop.open, answers: [{ status: 200, body: pendingChoiceView() }] });
+  h.start();
+  await settle();
+  tick(h, checkbox(h));
+  advance(h, 4100);
+  h.answer({ status: 200, body: { recorded: true } }, { status: 200, body: confirmedChoice() }, { status: 200, body: approvalView() });
+  const before = h.fetches.length;
+  click(onetap(h));
+  assert.equal(pop.opened.length, 1, 'opened inside the tap');
+  assert.equal(h.fetches.length - before, 1, 'only the consent POST had started when the popup opened');
+  await settle();
+  h.runNext();
+  await settle();
+  assert.equal(pop.opened[0].w.location.replaced, APPROVE_URL);
+  assert.equal(pop.opened.length, 1);
+});
+
+test('one tap: terms not recorded means no card is sent and the popup opened in the tap is closed', async () => {
+  for (const answer of [{ status: 409, body: { error: 'consent_stale' } }, { status: 500, body: {} }]) {
+    const pop = popupRecorder();
+    const h = harness({ desktop: true, open: pop.open, answers: [{ status: 200, body: pendingChoiceView() }] });
+    h.start();
+    await settle();
+    tick(h, checkbox(h));
+    advance(h, 4100);
+    h.answer(answer, { status: 200, body: pendingChoiceView() });
+    click(onetap(h));
+    await settle();
+    assert.equal(cardPosts(h).length, 0, JSON.stringify(answer));
+    assert.equal(pop.opened[0].w.closed, true, JSON.stringify(answer));
+  }
+});
+
+test('one tap with "Add a new card": "Agree and add card and approve", {new_card: true} after the terms, and no popup', async () => {
+  const pop = popupRecorder();
+  const asked = choiceView({ card_choice: { ...choiceView().card_choice, new_card: true } });
+  const h = harness({ desktop: true, open: pop.open, answers: [{ status: 200, body: pendingChoiceView() }] });
+  h.start();
+  await settle();
+  click(buttons(h, 'Change')[0]);
+  const add = radio(h, 'new');
+  add.checked = true;
+  (add.listeners.change || []).forEach((fn) => fn());
+  click(buttons(h, 'Add a new card').filter((b) => b.className.includes('btn-primary'))[0]);
+  tick(h, checkbox(h));
+  advance(h, 4100);
+  h.answer({ status: 200, body: { recorded: true } }, { status: 200, body: asked });
+  click(onetap(h, 'Agree and add card and approve $23.49'));
+  await settle();
+  assert.deepEqual(JSON.parse(cardPosts(h)[0].init.body), { new_card: true });
+  assert.equal(pop.opened.length, 0, 'the next step is the card page, not the approval');
+});
+
+test('one tap elsewhere is unchanged: the card and address steps keep "Agree and continue"', async () => {
+  const h = harness({ answers: [{ status: 200, body: consentView() }] });
+  h.start();
+  await settle();
+  assert.ok(agree(h));
+  assert.equal(buttons(h, 'Agree and approve').length, 0);
+});
