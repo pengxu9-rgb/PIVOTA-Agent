@@ -274,8 +274,12 @@ block, no block), the step is "not available right now", never an Approve the ba
 **The page**: "Approve your purchase", the card it will pay with ("Visa ending 4242 · Added Nov 20") and, with more
 than one card, **Change**, which opens the list in place ("Choose a card", one radio per card, "Use this card"). The
 buyer's pick stays in memory only. **Approve** posts the card; the page then shows the card and "Getting the secure page
-ready…" while the backend asks for the token, and the approval screen's button reads "Continue to the secure page"
-(the card is already confirmed; the button only opens the partner's page, which needs a click of its own). A
+ready…" while the backend asks for the token. On desktop, Approve also opens the popup inside that tap ("Getting the
+secure page ready…") and the approval page is loaded into it as soon as a read carries it: no second tap (staging
+run-through 11-27). Only from the buyer's own tap on this page (memory only), once, given up after 3 minutes or as soon
+as the purchase goes anywhere but towards its approval (a refused choice, "not available", an ended purchase, embed mode:
+the popup is closed). On mobile and in webviews, or when the popup is blocked, the approval screen's button reads
+"Continue to the secure page" (the card is already confirmed; the button only opens the partner's page). A
 `card_choice_stale` answer is retried with the same card, twice, 1.5 s apart (most often the backend's worker held the
 purchase for a moment); then "Your saved cards changed. Check the card, then approve again."
 
@@ -482,7 +486,10 @@ The payment partner's card page and approval page send `frame-ancestors 'none'` 
 So they open:
 
 - desktop (fine pointer, wide window): a popup, opened as `about:blank`, its opener cut, then navigated, so our page
-  can notice it close; if the popup is blocked, this tab navigates there and the buyer comes back to the link;
+  can notice it close; if the popup is blocked, this tab navigates there and the buyer comes back to the link. Our page
+  closes a popup it opened once that step is over (the partner's page may stay on "safe to close now"): the approval
+  once the order is being placed or ended, the card page once the card is in, the bank's page once the order ended;
+  never on a screen that does not say the step moved on ("not available right now");
 - mobile and in-app webviews: a plain `target="_blank" rel="noopener noreferrer"` link (a webview that ignores
   `_blank` navigates in place; coming back reloads the page, which resumes from the purchase's current state).
 

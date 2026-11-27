@@ -58,7 +58,7 @@ class El {
   }
 }
 
-function harness({ hash = `#t=${TOKEN}`, answers = [], imageAnswers = [] } = {}) {
+function harness({ hash = `#t=${TOKEN}`, answers = [], imageAnswers = [], desktop = false, open = null } = {}) {
   const clock = { t: T0 };
   const timers = [];
   let nextId = 1;
@@ -79,15 +79,15 @@ function harness({ hash = `#t=${TOKEN}`, answers = [], imageAnswers = [] } = {})
   const location = { pathname: `/agenpas/p/${PID}`, search: '', hash, assign(u) { location.assigned = u; } };
   const window = {
     location,
-    innerWidth: 390,
+    innerWidth: desktop ? 1280 : 390,
     history: { state: null, replaceState(state, title, url) { replaced.push(url); location.hash = ''; } },
     sessionStorage: {
       setItem: (k, v) => storage.set(k, String(v)),
       getItem: (k) => (storage.has(k) ? storage.get(k) : null),
       removeItem: (k) => storage.delete(k),
     },
-    matchMedia: () => ({ matches: false }),
-    open: () => null,
+    matchMedia: () => ({ matches: desktop }),
+    open: open || (() => null),
     addEventListener() {},
   };
   const document = {
@@ -1606,4 +1606,168 @@ test('card choice: a refused new-card POST says so in its own words, never "Your
   await settle();
   assert.match(h.text(), /We couldn't start adding a new card/);
   assert.doesNotMatch(h.text(), /Your saved cards changed/);
+});
+
+// ---- the approval popup after the card choice (staging run-through 11-27) -------------------------------------------
+//
+// Desktop: the card choice's Approve opens the popup inside the buyer's tap, and the approval page is loaded into it as
+// soon as a read carries it: no second "Continue to the secure page" tap. The popup is closed once the step is over.
+
+const APPROVE_URL = 'https://pay.partner.example/approve?s=2';
+
+function approvalView(over = {}) {
+  return view({
+    state: 'awaiting_buyer_authorization', screen: 'approve',
+    amounts: { unit_price_minor: 1800, quoted_total_minor: 2349, final_total_minor: null, shipping_minor: 399, tax_minor: 150 },
+    action: { kind: 'approval', url: APPROVE_URL, expires_at: '2026-11-17T12:30:00.000Z', open_mode: 'popup' },
+    ...over,
+  });
+}
+
+function popupRecorder() {
+  const opened = [];
+  const open = (url, name, features) => {
+    const w = {
+      closed: false, opener: { page: true }, document: { title: '', body: { textContent: '' } },
+      location: { replaced: null, replace(u) { this.replaced = u; } },
+      close() { w.closed = true; },
+    };
+    opened.push({ url, name, features, w });
+    return w;
+  };
+  return { opened, open };
+}
+
+const confirmedChoice = () => choiceView({ card_choice: { ...choiceView().card_choice, confirmed: true } });
+
+test('approval popup: Approve opens it in the tap, the approval page fills it with no second tap, and it closes once placing', async () => {
+  const pop = popupRecorder();
+  const h = harness({
+    desktop: true, open: pop.open,
+    answers: [{ status: 200, body: choiceView() }, { status: 200, body: confirmedChoice() }, { status: 200, body: approvalView() },
+      { status: 200, body: view({ state: 'paying', screen: 'placing', action: null }) }],
+  });
+  h.start();
+  await settle();
+  click(buttons(h, 'Approve $23.49')[0]);
+  // Inside the tap, before the POST has answered: one popup, ours, blank, saying it is getting ready, opener cut.
+  assert.equal(pop.opened.length, 1);
+  assert.equal(pop.opened[0].url, '');
+  assert.equal(pop.opened[0].w.opener, null);
+  assert.match(pop.opened[0].w.document.body.textContent, /Getting the secure page ready/);
+  await settle();
+  assert.equal(pop.opened[0].w.location.replaced, null, 'nothing loaded before the approval page exists');
+  h.runNext();  // the next read: the approval page
+  await settle();
+  assert.equal(pop.opened[0].w.location.replaced, APPROVE_URL, 'loaded into the same popup, no second tap');
+  assert.equal(pop.opened.length, 1, 'never a second window');
+  assert.match(h.text(), /Waiting for your approval/);
+  assert.equal(pop.opened[0].w.closed, false);
+  h.runNext();  // the order is being placed: the approval step is over
+  await settle();
+  assert.equal(pop.opened[0].w.closed, true, 'the partner page is closed for the buyer');
+});
+
+test('approval popup: a refused card choice, an ended purchase, or the wait running out closes the one opened in the tap', async () => {
+  const cases = [
+    { name: 'refused', after: [{ status: 409, body: { error: 'card_choice_not_offered' } }, { status: 200, body: choiceView() }] },
+    { name: 'failed', after: [{ status: 200, body: confirmedChoice() }, { status: 200, body: view({ state: 'failed', screen: 'failed', terminal: true, action: null }) }] },
+    { name: 'unavailable', after: [{ status: 200, body: confirmedChoice() }, { status: 200, body: view({ state: 'locking', screen: 'unavailable', action: null }) }] },
+  ];
+  for (const c of cases) {
+    const pop = popupRecorder();
+    const h = harness({ desktop: true, open: pop.open, answers: [{ status: 200, body: choiceView() }, ...c.after] });
+    h.start();
+    await settle();
+    click(buttons(h, 'Approve $23.49')[0]);
+    await settle();
+    if (c.name !== 'refused') { h.runNext(); await settle(); }
+    assert.equal(pop.opened[0].w.closed, true, c.name);
+    assert.equal(pop.opened[0].w.location.replaced, null, c.name);
+  }
+  // The wait runs out (3 minutes) while the total is still being confirmed: closed, and a later approval page is
+  // offered by its button, never loaded on its own.
+  const pop = popupRecorder();
+  const h = harness({ desktop: true, open: pop.open, answers: [{ status: 200, body: choiceView() }, { status: 200, body: confirmedChoice() },
+    { status: 200, body: view({ state: 'locking', screen: 'confirming_total', action: null }) }, { status: 200, body: approvalView() }] });
+  h.start();
+  await settle();
+  click(buttons(h, 'Approve $23.49')[0]);
+  await settle();
+  h.clock.t += 181000;
+  h.runNext();
+  await settle();
+  assert.equal(pop.opened[0].w.closed, true);
+  h.runNext();
+  await settle();
+  assert.equal(pop.opened[0].w.location.replaced, null);
+  assert.ok(h.app.all((n) => n.tagName === 'A' && n.href === APPROVE_URL).length === 1, 'the button is the way there again');
+});
+
+test('approval popup: mobile, a blocked popup, a new card, or embed mode keep the approval page behind its button', async () => {
+  // Mobile: no window is opened in the tap.
+  const mobile = popupRecorder();
+  const m = harness({ open: mobile.open, answers: [{ status: 200, body: choiceView() }, { status: 200, body: confirmedChoice() }, { status: 200, body: approvalView() }] });
+  m.start();
+  await settle();
+  click(buttons(m, 'Approve $23.49')[0]);
+  await settle();
+  m.runNext();
+  await settle();
+  assert.equal(mobile.opened.length, 0);
+  assert.match(m.text(), /Continue to the secure page/);
+  // A blocked popup (window.open answers null): the button, as before.
+  const b = harness({ desktop: true, open: () => null, answers: [{ status: 200, body: choiceView() }, { status: 200, body: confirmedChoice() }, { status: 200, body: approvalView() }] });
+  b.start();
+  await settle();
+  click(buttons(b, 'Approve $23.49')[0]);
+  await settle();
+  b.runNext();
+  await settle();
+  assert.match(b.text(), /Continue to the secure page/);
+  // "Add card and approve": the next step is the card page, not the approval: nothing opened in the tap.
+  const nc = popupRecorder();
+  const n = harness({ desktop: true, open: nc.open, answers: [{ status: 200, body: choiceView() }, { status: 200, body: choiceView({ card_choice: { ...choiceView().card_choice, new_card: true } }) }] });
+  n.start();
+  await settle();
+  click(buttons(n, 'Change')[0]);
+  const add = radio(n, 'new');
+  add.checked = true;
+  (add.listeners.change || []).forEach((fn) => fn());
+  click(buttons(n, 'Add a new card').filter((x) => x.className.includes('btn-primary'))[0]);
+  click(buttons(n, 'Add card and approve')[0]);
+  await settle();
+  assert.equal(nc.opened.length, 0);
+  // Embed mode: the approval is framed on this page, so the popup opened in the tap is closed, never filled.
+  const em = popupRecorder();
+  const e = harness({ desktop: true, open: em.open, answers: [{ status: 200, body: choiceView() }, { status: 200, body: confirmedChoice() },
+    { status: 200, body: approvalView({ action: { ...approvalView().action, open_mode: 'embed' } }) }] });
+  e.start();
+  await settle();
+  click(buttons(e, 'Approve $23.49')[0]);
+  await settle();
+  e.runNext();
+  await settle();
+  assert.equal(em.opened[0].w.closed, true);
+  assert.equal(em.opened[0].w.location.replaced, null);
+});
+
+test('hosted popups: the card page closes once the card is in; never on "not available right now" while the buyer may be there', async () => {
+  const pop = popupRecorder();
+  const h = harness({ desktop: true, open: pop.open, answers: [{ status: 200, body: view() },
+    { status: 200, body: view({ state: 'locking', screen: 'unavailable', action: null }) },
+    { status: 200, body: choiceView() }] });
+  h.start();
+  await settle();
+  const link = h.app.all((n) => n.tagName === 'A' && n.href === 'https://pay.partner.example/bind?s=1')[0];
+  assert.ok(link, h.text());
+  click(link);
+  assert.equal(pop.opened.length, 1);
+  assert.equal(pop.opened[0].w.location.replaced, 'https://pay.partner.example/bind?s=1');
+  h.runNext();
+  await settle();
+  assert.equal(pop.opened[0].w.closed, false, 'kept: "not available" does not say the step moved on');
+  h.runNext();
+  await settle();
+  assert.equal(pop.opened[0].w.closed, true, 'closed: the card is in, the choice is on screen');
 });
