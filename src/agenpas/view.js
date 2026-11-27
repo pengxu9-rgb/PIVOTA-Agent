@@ -1010,7 +1010,10 @@ function buildView(body, {
   let cardChoice = cardChoiceShown ? cardChoiceFor(src.card_choice, nowMs) : null;
   // A choice the backend sent that does not check out: never a spinner until its deadline, never a repaired choice.
   if (cardChoiceShown && !cardChoice) screen = 'unavailable';
-  if (cardChoice && !cardChoice.confirmed && !satisfiedFor('approval')) {
+  // A new-card request needs no terms check here: the backend records one only after the approval step's terms
+  // (its consent check), and the write's own answer carries no consent block (a check on it would flash "not available
+  // right now" before the card page; staging run-through 11-27).
+  if (cardChoice && !cardChoice.confirmed && !cardChoice.new_card && !satisfiedFor('approval')) {
     if (consentEnabled && isOfferable(block, 'approval')) cardChoice = { ...cardChoice, consent_pending: true };
     else {
       cardChoice = null;

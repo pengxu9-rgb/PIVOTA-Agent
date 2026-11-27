@@ -292,7 +292,16 @@ You'll add it on the secure page" and the button "Add card and approve $X", whic
 card after it). The backend leaves the wait for the partner's card page, so the next screen is "Add a card" (its own
 terms first), then "Confirming your total" while the order is locked again, then the approval on the new card. The
 view carries `card_choice.new_card` while the backend has not opened the card page yet ("Getting the secure card page
-ready…").
+ready…"). A choice that says `new_card` is never checked for the approval terms again: the backend records one only
+after them, and the write's own answer carries no consent block (checked again, the page flashed "not available right
+now" before the card page; staging run-through 11-27).
+
+**How the buyer gets there.** While the backend waits on the card choice, its view is `locking` with
+`next_action = {kind: "card_choice", expires_at}` and no URL (pivota-backend docs/agent_purchases_routes.md). That step
+is on the AgenPas page itself, so with consent on the `start_purchase` / `get_order` answer carries the buyer's freshly
+minted link as `next_action.action_url` too, exactly as for a consent-gated step (see "Agent surfaces"). A returning
+buyer with a saved card has no earlier step to open the page from: without this, nothing told the agent to hand the
+link over (staging run-through 11-27).
 
 ## Shipping address
 
@@ -424,7 +433,7 @@ Sec-Fetch-Site and dwell checks stop only naive automation, not an agent that dr
 suffices is a question for Reap.
 
 **Agent surfaces.** With consent on, a `start_purchase` / `get_order` answer whose `next_action` is gated
-(`consent_required: true`, no URL) also carries the freshly minted link as `next_action.action_url`, with `expires_at`
+(`consent_required: true`, no URL), or is the A2A card choice (`kind: "card_choice"`, no URL), also carries the freshly minted link as `next_action.action_url`, with `expires_at`
 the earlier of the step's deadline and the link's; their descriptions gain one sentence saying so (only while a rail is
 served; it also says that a gated answer with neither link means "not available yet, poll again", which is what a
 gated answer on a rail not in `AGENPAS_RAILS` carries). A REAP purchase gets `agenpas_url` only when its answer is gated
