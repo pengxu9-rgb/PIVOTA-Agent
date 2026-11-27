@@ -947,10 +947,8 @@
     addressLine1: { label: 'Address', autocomplete: 'shipping address-line1' },
     addressLine2: { label: 'Apartment, suite, etc. (optional)', autocomplete: 'shipping address-line2', optional: true },
     city: { label: 'City', autocomplete: 'shipping address-level2' },
-    // Never required: the store's own checkout asks for a state or ZIP if it needs one. Checked only when given.
-    region: { label: 'State (optional)', autocomplete: 'shipping address-level1', optional: true,
-      options: US_STATES.map(function (c) { return [c, c]; }) },
-    postalCode: { label: 'ZIP code (optional)', autocomplete: 'shipping postal-code', inputmode: 'numeric', optional: true },
+    region: { label: 'State', autocomplete: 'shipping address-level1', options: US_STATES.map(function (c) { return [c, c]; }) },
+    postalCode: { label: 'ZIP code', autocomplete: 'shipping postal-code', inputmode: 'numeric' },
     country: { label: 'Country', autocomplete: 'shipping country', options: [['US', 'United States']] },
   };
   var ADDRESS_ORDER = ['email', 'firstName', 'lastName', 'phone', 'addressLine1', 'addressLine2', 'city', 'region', 'postalCode', 'country'];
@@ -965,25 +963,39 @@
     invalid_characters: 'Remove the special characters.',
   };
 
-  // Offered beside a whole address (one whose first line is asked for) though the backend never lists them as missing.
+  // Offered beside a whole address (one whose first line is asked for) when the backend does NOT list them: the store's
+  // own checkout asks for a state or ZIP if it needs one. Only such an added field is optional; a field the backend
+  // lists stays required, whatever it is.
   var ADDRESS_OPTIONAL_COMPANIONS = ['region', 'postalCode'];
 
-  function addressFieldsOf(view) {
+  function listedFieldsOf(view) {
     var req = view.address_request || {};
-    var listed = Array.isArray(req.fields_missing) ? req.fields_missing.slice() : [];
-    if (listed.indexOf('addressLine1') >= 0) {
-      ADDRESS_OPTIONAL_COMPANIONS.forEach(function (f) { if (listed.indexOf(f) < 0) listed.push(f); });
-    }
-    return ADDRESS_ORDER.filter(function (f) { return listed.indexOf(f) >= 0; });
+    return Array.isArray(req.fields_missing) ? req.fields_missing : [];
+  }
+
+  /** The companions this form adds as optional: not listed by the backend, beside a listed `addressLine1`. */
+  function addedOptionalOf(view) {
+    var listed = listedFieldsOf(view);
+    if (listed.indexOf('addressLine1') < 0) return [];
+    return ADDRESS_OPTIONAL_COMPANIONS.filter(function (f) { return listed.indexOf(f) < 0; });
+  }
+
+  function addressFieldsOf(view) {
+    var shown = listedFieldsOf(view).concat(addedOptionalOf(view));
+    return ADDRESS_ORDER.filter(function (f) { return shown.indexOf(f) >= 0; });
+  }
+
+  function fieldOptional(field, added) {
+    return Boolean(ADDRESS_FIELDS[field].optional) || added.indexOf(field) >= 0;
   }
 
   /** Client-side checks for a quick answer; the gateway and the backend check again. Returns {field: code}. */
-  function checkAddress(fields, values) {
+  function checkAddress(fields, values, added) {
     var errors = {};
     fields.forEach(function (f) {
       var v = String(values[f] || '').trim();
       if (!v) {
-        if (!ADDRESS_FIELDS[f].optional) errors[f] = 'required';
+        if (!fieldOptional(f, added || [])) errors[f] = 'required';
         return;
       }
       if (v.length > 200) errors[f] = 'too_long';
@@ -996,12 +1008,14 @@
     return errors;
   }
 
-  function addressInput(field) {
+  function addressInput(field, added) {
     var meta = ADDRESS_FIELDS[field];
+    var optional = fieldOptional(field, added || []);
+    var addedLabel = added && added.indexOf(field) >= 0;
     var id = 'agenpas-' + field;
     // One box per field, its label inside; `field-<name>` sets how wide it sits in a row.
     var wrap = el('div', 'field field-' + field + (ui.addressErrors[field] ? ' field-bad' : ''));
-    var label = el('label', 'field-label', meta.label);
+    var label = el('label', 'field-label', addedLabel ? meta.label + ' (optional)' : meta.label);
     label.setAttribute('for', id);
     var input;
     if (meta.options) {
@@ -1025,7 +1039,7 @@
     input.id = id;
     input.name = field;
     input.setAttribute('autocomplete', meta.autocomplete);
-    if (!meta.optional) input.setAttribute('aria-required', 'true');
+    if (!optional) input.setAttribute('aria-required', 'true');
     input.value = ui.address[field] || (meta.options && meta.options.length === 1 ? meta.options[0][0] : '');
     if (meta.options && meta.options.length === 1) ui.address[field] = input.value;
     function keep() { ui.address[field] = input.value; }
@@ -1067,6 +1081,7 @@
       return progressCard('Checking the terms…', 'This page updates on its own. What you typed is kept.');
     }
     var fields = addressFieldsOf(view);
+    var added = addedOptionalOf(view);
     var prefill = (view.address_request && view.address_request.prefill) || {};
     Object.keys(prefill).forEach(function (k) {
       if (ui.address[k] === undefined && typeof prefill[k] === 'string') ui.address[k] = prefill[k];
@@ -1076,7 +1091,7 @@
       el('p', 'muted', 'Your address goes to ' + merchantName(view) + ' so they can ship your order.'));
     var form = el('form', 'address-form');
     form.setAttribute('novalidate', 'novalidate');
-    fields.forEach(function (f) { form.appendChild(addressInput(f)); });
+    fields.forEach(function (f) { form.appendChild(addressInput(f, added)); });
     // Sent back to the terms (409 consent_required): said here too until the next read shows them.
     if (ui.addressConsentNote) {
       var sentBack = el('p', 'fine', ui.addressConsentNote);
@@ -1094,15 +1109,15 @@
     form.appendChild(submit);
     form.addEventListener('submit', function (ev) {
       ev.preventDefault();
-      submitAddress(view, fields);
+      submitAddress(view, fields, added);
     });
     card.appendChild(form);
     return assurance(view, card);
   }
 
-  function submitAddress(view, fields) {
+  function submitAddress(view, fields, added) {
     if (ui.addressBusy) return;
-    var errors = checkAddress(fields, ui.address);
+    var errors = checkAddress(fields, ui.address, added);
     ui.addressErrors = errors;
     ui.addressMessage = Object.keys(errors).length ? 'Please check the highlighted fields.' : null;
     if (Object.keys(errors).length) {

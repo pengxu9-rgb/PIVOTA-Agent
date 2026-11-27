@@ -460,6 +460,44 @@ test('address screen: a whole address offers the state and ZIP as optional, thou
   assert.equal(body.country, 'US');
 });
 
+test('address screen: a state and ZIP the backend LISTS stay required (no "(optional)"), and a blank one sends nothing', async () => {
+  const listed = ['email', 'firstName', 'lastName', 'phone', 'addressLine1', 'city', 'region', 'postalCode', 'country'];
+  const h = harness({ answers: [{ status: 200, body: addressView(listed, { country: 'US' }) }] });
+  h.start();
+  await settle();
+  assert.doesNotMatch(h.text(), /\(optional\)/);
+  assert.equal(byName(h, 'region').getAttribute('aria-required'), 'true');
+  assert.equal(byName(h, 'postalCode').getAttribute('aria-required'), 'true');
+  type(byName(h, 'email'), 'buyer@example.test');
+  type(byName(h, 'firstName'), 'Pat');
+  type(byName(h, 'lastName'), 'Example');
+  type(byName(h, 'phone'), '4155550142');
+  type(byName(h, 'addressLine1'), '1 Example Way');
+  type(byName(h, 'city'), 'Sample City');
+  const ev = submit(h);
+  await settle();
+  assert.equal(ev.prevented, true);
+  assert.equal(h.fetches.length, 1, 'only the first read');
+  assert.equal(byName(h, 'region').getAttribute('aria-invalid'), 'true');
+  assert.equal(byName(h, 'postalCode').getAttribute('aria-invalid'), 'true');
+  assert.match(h.text(), /This is required\./);
+});
+
+test('address screen: a stored address missing only its ZIP asks for a required ZIP (never a blank submit)', async () => {
+  const h = harness({ answers: [{ status: 200, body: addressView(['postalCode']) }] });
+  h.start();
+  await settle();
+  assert.deepEqual(h.app.all((n) => n.tagName === 'INPUT' || n.tagName === 'SELECT').map((n) => n.name), ['postalCode']);
+  assert.doesNotMatch(h.text(), /\(optional\)/);
+  assert.equal(byName(h, 'postalCode').getAttribute('aria-required'), 'true');
+  const ev = submit(h);
+  await settle();
+  assert.equal(ev.prevented, true);
+  assert.equal(h.fetches.length, 1, 'nothing sent');
+  assert.equal(byName(h, 'postalCode').getAttribute('aria-invalid'), 'true');
+  assert.match(h.text(), /This is required\./);
+});
+
 test('address screen: the state and ZIP are not added to a form that does not ask for the address itself', async () => {
   const h = harness({ answers: [{ status: 200, body: addressView(['email', 'phone']) }] });
   h.start();
