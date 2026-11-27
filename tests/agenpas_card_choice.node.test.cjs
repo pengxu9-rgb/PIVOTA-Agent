@@ -559,3 +559,18 @@ test('fixture card_choice: "Add a new card" goes through the card page (its term
   assert.equal(approving.body.screen, 'approve');
   assert.deepEqual(approving.body.payment_card, { label: 'Visa', last4: '7777' });
 });
+
+// Staging run-through 11-27: after "Add a new card" the page flashed "This step isn't available right now" before the
+// card page. The write's answer (the backend's POST .../card-choice) carries no consent block, and the view asked a
+// new-card choice for the approval terms again. The backend records a new-card request only after those terms, so a
+// choice that says new_card needs no terms check here: the page waits for the card page instead.
+test('view: the new-card write\'s answer (no consent block) is the waiting choice, never "not available right now"', () => {
+  const answer = body('locking', { card_choice: choice({ new_card: true }), consent: undefined });
+  const v = view(answer);
+  assert.equal(v.screen, 'choose_card');
+  assert.equal(v.card_choice.new_card, true);
+  assert.equal(v.card_choice.consent_pending, undefined, 'no terms offered again');
+  // A saved-card choice without the terms on record still offers them first, or is "not available" (unchanged).
+  assert.equal(view(body('locking', { consent: undefined })).screen, 'unavailable');
+  assert.equal(view(body('locking', { consent: OFFERED })).card_choice.consent_pending, true);
+});

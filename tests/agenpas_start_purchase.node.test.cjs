@@ -537,3 +537,58 @@ test('the consent sentence: only with consent on AND a rail served; it names age
     assert.ok(surface.tools.find((t) => t.name === 'start_purchase').description.endsWith(m.surface.agenpasStartPurchaseSentence(30)));
   });
 });
+
+// The A2A card choice (pivota-backend docs/agent_purchases_routes.md, "How the buyer gets there"): while the worker waits
+// for the buyer to confirm (or add) the paying card, the backend's view is `locking` with next_action
+// {kind: "card_choice", expires_at} and no URL. The step is on the AgenPas page, so the buyer's link is the handoff, as
+// for a consent-gated step. Staging run-through 11-27: a returning buyer with a saved card had no earlier step, and
+// without this nothing told the agent to hand the link over.
+function cardChoice(railId) {
+  const body = unified(railId);
+  body.state = 'locking';
+  body.rail_state = 'quoting';
+  body.poll_after_seconds = 5;
+  body.next_action = { kind: 'card_choice', expires_at: GATED_DEADLINE };
+  body.detail = { id: railId, state: 'quoting', last_error_code: 'card_choice_required', card_choice_required: { expires_at: GATED_DEADLINE } };
+  return body;
+}
+
+test('a card_choice step (A2A) carries agenpas_url, also as next_action.action_url, expiring at the earlier of the step and the link', async () => {
+  const surface = await build({ readBody: cardChoice });
+  await withEnv(REAP_ON, async () => {
+    for (const o of [await surface.callTool('get_order', { order_id: PP }, SESSION), await surface.callTool('start_purchase', args(), SESSION)]) {
+      assert.equal(o.next_action.kind, 'card_choice');
+      assert.equal(typeof o.agenpas_url, 'string');
+      assert.equal(o.next_action.action_url, o.agenpas_url);
+      assert.equal(Object.hasOwn(o.next_action, 'consent_required'), false, 'nothing added but the handoff');
+      const linkExp = JSON.parse(Buffer.from(new URLSearchParams(new URL(o.agenpas_url).hash.slice(1)).get('t').split('.')[1], 'base64url')).exp;
+      assert.equal(o.next_action.expires_at, new Date(Math.min(Date.parse(GATED_DEADLINE), linkExp * 1000)).toISOString());
+      assert.equal(JSON.stringify(o).includes('pay.partner.example'), false, 'no partner URL anywhere');
+    }
+  });
+});
+
+test('a card_choice step with consent OFF: the additive agenpas_url only, no handoff member (as before)', async () => {
+  const surface = await build({ readBody: cardChoice });
+  const without = await build({ readBody: cardChoice, withMinter: false });
+  for (const env of [{}, { AGENPAS_CONSENT_ENABLED: '0' }]) {
+    await withEnv({ ...ON_ALL, ...env }, async () => {
+      const o = await surface.callTool('get_order', { order_id: PP }, SESSION);
+      assert.equal(o.next_action.kind, 'card_choice');
+      assert.equal(Object.hasOwn(o.next_action, 'action_url'), false);
+      const { agenpas_url: _url, ...rest } = o;
+      assert.deepEqual(rest, await without.callTool('get_order', { order_id: PP }, SESSION));
+    });
+  }
+});
+
+test('only an AgenPas-page step is handed our link: a card_choice with a URL of its own, or another kind without one, is not', async () => {
+  const ownUrl = (id) => { const b = cardChoice(id); b.next_action = { ...b.next_action, url: CARD_PAGE }; return b; };
+  const other = (id) => { const b = cardChoice(id); b.next_action = { kind: 'card_chooser', expires_at: GATED_DEADLINE }; return b; };
+  await withEnv(REAP_ON, async () => {
+    const a = await (await build({ readBody: ownUrl })).callTool('get_order', { order_id: PP }, SESSION);
+    assert.equal(a.next_action.action_url, CARD_PAGE, 'the backend\'s own URL stays the handoff');
+    const b = await (await build({ readBody: other })).callTool('get_order', { order_id: PP }, SESSION);
+    assert.equal(Object.hasOwn(b.next_action, 'action_url'), false);
+  });
+});
