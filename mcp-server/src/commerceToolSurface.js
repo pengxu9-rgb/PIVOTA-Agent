@@ -333,6 +333,16 @@ function isConsentGatedAction(action) {
     && typeof action.action_url !== "string" && typeof action.url !== "string");
 }
 
+/**
+ * A next_action whose step is ON the AgenPas page itself, with no handoff URL of its own: the A2A rail's card choice
+ * (pivota-backend docs/agent_purchases_routes.md, `kind: "card_choice"`): the worker waits for the buyer to confirm (or
+ * add) the paying card before any token. The buyer's way there is THEIR AgenPas link, as for a consent-gated step.
+ */
+function isAgenpasPageAction(action) {
+  return Boolean(action && typeof action === "object" && !Array.isArray(action) && action.kind === "card_choice"
+    && typeof action.action_url !== "string" && typeof action.url !== "string");
+}
+
 /** The minter says AGENPAS_CONSENT_ENABLED is on (a minter that cannot say: off). */
 function consentOn(link) {
   try {
@@ -929,10 +939,12 @@ export function createCommerceToolSurface(executor, { log, cache: cacheOpt = tru
     if (!agenpasLink || typeof agenpasLink.mint !== "function" || !isPlainObject(out)) return out;
     const input = { purchaseId: out.order_id, agentId: ctx && ctx.agent_id, userRef: ctx && ctx.user_ref };
     // CONSENT GATED (AGENPAS_CONSENT_ENABLED on, and the backend withheld the partner's page until the buyer accepts
-    // the terms: `next_action.consent_required` and no URL). The buyer's way on is THIS link, so it also goes in the
-    // action's handoff member, with the earlier of the step's deadline and the link's. Off, or not gated: only the
-    // additive `agenpas_url`, exactly as before.
-    const gated = isConsentGatedAction(out.next_action) && consentOn(agenpasLink) && typeof agenpasLink.mintLink === "function";
+    // the terms: `next_action.consent_required` and no URL), or a step on the AgenPas page itself (the A2A card choice,
+    // `kind: "card_choice"`; isAgenpasPageAction). The buyer's way on is THIS link, so it also goes in the action's
+    // handoff member, with the earlier of the step's deadline and the link's. Off, or neither: only the additive
+    // `agenpas_url`, exactly as before.
+    const pageStep = isConsentGatedAction(out.next_action) || isAgenpasPageAction(out.next_action);
+    const gated = pageStep && consentOn(agenpasLink) && typeof agenpasLink.mintLink === "function";
     let url = null;
     let expiresAt = null;
     try {
