@@ -68,6 +68,11 @@
     lastScreen: null,
     popup: null,
     popupTimer: null,
+    // The step the open hosted popup is for (its `action.kind`): the page closes the popup once that step is over.
+    popupKind: null,
+    // A popup this page opened on the buyer's own Approve tap in the card choice, before the approval page exists:
+    // { win, until }. The approval page is loaded into it as soon as a read carries it (no second tap), once.
+    pendingPopup: null,
     image: { state: 'idle', src: null, slot: null },
     pollTimer: null,
     errors: 0,
@@ -790,6 +795,9 @@
     approve.type = 'button';
     approve.disabled = ui.cardBusy;
     approve.addEventListener('click', function () {
+      // Inside the buyer's own tap (a popup opened later, without one, is blocked): a saved card's approval page is
+      // the next step, so its popup is opened now and filled when the page exists.
+      if (!wantsNew && !ui.cardBusy) preOpenApproval();
       submitCardChoice(wantsNew ? { new_card: true } : { handle: current.handle });
     });
     card.appendChild(approve);
@@ -843,6 +851,8 @@
         return;
       }
       ui.cardRetries = 0;
+      // The card was not taken: no approval page follows, so the popup opened for it goes.
+      closePendingPopup();
       if (refusal === 'card_choice_stale' || refusal === 'card_choice_not_offered') {
         ui.cardDraft = null;
         ui.cardMessage = choice && choice.new_card === true
@@ -863,6 +873,7 @@
       render();
     }).catch(function () {
       ui.cardBusy = false;
+      closePendingPopup();
       ui.cardMessage = "We couldn't approve that just now. Please try again in a moment.";
       render();
     });
@@ -1289,6 +1300,7 @@
       ui.waitingKind = null;
       ui.lastScreen = view.screen;
     }
+    reconcilePopups(view);
     clear(app);
     append(app, summaryCard(view), stepCard(view), noticeEl());
   }
@@ -1344,6 +1356,101 @@
     }, 1000);
   }
 
+  // ---- popups this page opened --------------------------------------------------------------------------------------
+  //
+  // THE APPROVAL AFTER THE CARD CHOICE (staging run-through 11-27: a second tap on "Continue to the secure page" right after
+  // Approve felt redundant). On desktop the card choice's Approve opens the popup inside that tap, showing "Getting the
+  // secure page ready…", and the approval page is loaded into it as soon as a read carries it. Only from the buyer's
+  // own tap on THIS page (memory only: a reload, another tab or a later visit has none), consumed once, given up after
+  // PENDING_POPUP_MS or as soon as the purchase goes anywhere but towards its approval. Mobile and webviews keep the one
+  // tap on the secure page button (a background tab may be paused, and a webview may refuse a window it did not ask for).
+  //
+  // CLOSING. A hosted popup this page opened is closed once its step is over (the partner's page may stay on "safe to
+  // close now"): the approval once the order is being placed (or ended), the card page once the card is in. Never on a
+  // screen that does not say the step moved on ("not available right now", a read error): the buyer may still be there.
+  var PENDING_POPUP_MS = 180000;
+  var PENDING_POPUP_SCREENS = { choose_card: true, confirming_total: true, approve: true };
+  var STEP_OVER = {
+    approval: { placing: true, authenticate: true, done: true, failed: true, refused: true, expired: true, outcome_unknown: true },
+    card_binding: { choose_card: true, confirming_total: true, approve: true, placing: true, done: true, failed: true, refused: true,
+      expired: true, outcome_unknown: true },
+    authenticate: { done: true, failed: true, refused: true, expired: true, outcome_unknown: true },
+  };
+
+  function windowClosed(w) {
+    try {
+      return !w || w.closed;
+    } catch (e) {
+      return true;
+    }
+  }
+
+  function preOpenApproval() {
+    if (!isDesktop()) return;
+    closePendingPopup();
+    var w = null;
+    try {
+      w = window.open('', 'agenpas_hosted', 'popup=yes,width=480,height=760');
+    } catch (e) {
+      w = null;
+    }
+    // Blocked: the approve screen's button stays the way there, exactly as before.
+    if (!w) return;
+    try { w.opener = null; } catch (e) { /* ignore */ }
+    try {
+      w.document.title = 'Secure page';
+      w.document.body.textContent = 'Getting the secure page ready…';
+    } catch (e) { /* a window of another origin under that name: it is replaced when the page is ready */ }
+    ui.pendingPopup = { win: w, until: Date.now() + PENDING_POPUP_MS };
+  }
+
+  function closePendingPopup() {
+    var p = ui.pendingPopup;
+    ui.pendingPopup = null;
+    if (p && !windowClosed(p.win)) {
+      try { p.win.close(); } catch (e) { /* ignore */ }
+    }
+  }
+
+  function showInPopup(w, action) {
+    try {
+      w.location.replace(action.url);
+    } catch (e) {
+      w.location.href = action.url;
+    }
+    ui.popup = w;
+    ui.popupKind = action.kind;
+    watchPopup();
+  }
+
+  function reconcilePopups(view) {
+    var p = ui.pendingPopup;
+    if (p) {
+      var a = view.action;
+      if (windowClosed(p.win)) {
+        ui.pendingPopup = null;
+      } else if (view.screen === 'approve' && a && a.kind === 'approval' && a.open_mode !== 'embed' && isHttps(a.url)) {
+        ui.pendingPopup = null;
+        showInPopup(p.win, a);
+        ui.waitingKind = a.kind;
+        schedule(POLL_MIN);
+      } else if (Date.now() > p.until || !PENDING_POPUP_SCREENS[view.screen] || (a && a.open_mode === 'embed') || view.terminal) {
+        closePendingPopup();
+      }
+    }
+    var over = ui.popupKind && STEP_OVER[ui.popupKind];
+    if (ui.popup && over && over[view.screen]) {
+      var w = ui.popup;
+      ui.popup = null;
+      ui.popupKind = null;
+      if (ui.popupTimer) clearInterval(ui.popupTimer);
+      ui.popupTimer = null;
+      if (!windowClosed(w)) {
+        try { w.close(); } catch (e) { /* ignore */ }
+      }
+    }
+  }
+
   function openHosted(action, ev) {
     if (!isHttps(action.url)) {
       ev.preventDefault();
@@ -1359,13 +1466,7 @@
       }
       if (w) {
         try { w.opener = null; } catch (e) { /* ignore */ }
-        try {
-          w.location.replace(action.url);
-        } catch (e) {
-          w.location.href = action.url;
-        }
-        ui.popup = w;
-        watchPopup();
+        showInPopup(w, action);
       } else {
         // Popup blocked: go there in this tab. Coming back reloads this page, which picks up where it was.
         window.location.assign(action.url);
