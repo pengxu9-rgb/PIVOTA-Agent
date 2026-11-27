@@ -947,8 +947,10 @@
     addressLine1: { label: 'Address', autocomplete: 'shipping address-line1' },
     addressLine2: { label: 'Apartment, suite, etc. (optional)', autocomplete: 'shipping address-line2', optional: true },
     city: { label: 'City', autocomplete: 'shipping address-level2' },
-    region: { label: 'State', autocomplete: 'shipping address-level1', options: US_STATES.map(function (c) { return [c, c]; }) },
-    postalCode: { label: 'ZIP code', autocomplete: 'shipping postal-code', inputmode: 'numeric' },
+    // Never required: the store's own checkout asks for a state or ZIP if it needs one. Checked only when given.
+    region: { label: 'State (optional)', autocomplete: 'shipping address-level1', optional: true,
+      options: US_STATES.map(function (c) { return [c, c]; }) },
+    postalCode: { label: 'ZIP code (optional)', autocomplete: 'shipping postal-code', inputmode: 'numeric', optional: true },
     country: { label: 'Country', autocomplete: 'shipping country', options: [['US', 'United States']] },
   };
   var ADDRESS_ORDER = ['email', 'firstName', 'lastName', 'phone', 'addressLine1', 'addressLine2', 'city', 'region', 'postalCode', 'country'];
@@ -963,9 +965,15 @@
     invalid_characters: 'Remove the special characters.',
   };
 
+  // Offered beside a whole address (one whose first line is asked for) though the backend never lists them as missing.
+  var ADDRESS_OPTIONAL_COMPANIONS = ['region', 'postalCode'];
+
   function addressFieldsOf(view) {
     var req = view.address_request || {};
-    var listed = Array.isArray(req.fields_missing) ? req.fields_missing : [];
+    var listed = Array.isArray(req.fields_missing) ? req.fields_missing.slice() : [];
+    if (listed.indexOf('addressLine1') >= 0) {
+      ADDRESS_OPTIONAL_COMPANIONS.forEach(function (f) { if (listed.indexOf(f) < 0) listed.push(f); });
+    }
     return ADDRESS_ORDER.filter(function (f) { return listed.indexOf(f) >= 0; });
   }
 

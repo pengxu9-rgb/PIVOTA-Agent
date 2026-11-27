@@ -211,12 +211,23 @@ test('validation: every rule answers a CODE per field, never the value', () => {
     assert.equal(out.field_errors[field], code, `${field} ${JSON.stringify(over).slice(0, 40)}`);
     for (const needle of [...NEEDLES, '4111111111111111']) assert.equal(JSON.stringify(out).includes(needle), false);
   }
-  // Required = the request's fields_missing (addressLine2 is never required).
-  const partial = validateAddress({ email: ADDRESS.email }, { required: ['email', 'phone', 'addressLine2'] });
+  // Required = the request's fields_missing (addressLine2, region and postalCode are never required).
+  const partial = validateAddress({ email: ADDRESS.email },
+    { required: ['email', 'phone', 'addressLine2', 'region', 'postalCode'] });
   assert.deepEqual(partial.field_errors, { phone: 'required' });
   assert.equal(validateAddress({}, { required: [] }).field_errors._body, 'empty');
   assert.equal(validateAddress('x').ok, false);
   assert.equal(US_STATES.length, 51);
+});
+
+test('validation: no state or ZIP is required, even when the request names every field; one given is still checked', () => {
+  const { region, postalCode, ...bare } = ADDRESS; // eslint-disable-line no-unused-vars
+  const out = validateAddress(bare, { required: ADDRESS_FIELDS });
+  assert.equal(out.ok, true);
+  assert.equal('region' in out.value || 'postalCode' in out.value, false);
+  assert.deepEqual(validateAddress({ ...bare, region: 'ZZ' }, { required: ADDRESS_FIELDS }).field_errors, { region: 'invalid_region' });
+  assert.deepEqual(validateAddress({ ...bare, postalCode: '941' }, { required: ADDRESS_FIELDS }).field_errors,
+    { postalCode: 'invalid_postal_code' });
 });
 
 test('the backend\'s field errors are kept only as {known field: code}', () => {

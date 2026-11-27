@@ -17,7 +17,9 @@
 const ADDRESS_FIELDS = Object.freeze([
   'email', 'firstName', 'lastName', 'phone', 'addressLine1', 'addressLine2', 'city', 'region', 'postalCode', 'country',
 ]);
-const OPTIONAL_FIELDS = new Set(['addressLine2']);
+// Never required here, even when the view lists them (a request that names no fields lists them all): the payment
+// partner asks for neither a state nor a ZIP, and the store's own checkout asks if it needs one. Checked when given.
+const OPTIONAL_FIELDS = new Set(['addressLine2', 'region', 'postalCode']);
 
 // Spellings the backend might use in `fields_missing` / `prefill` -> the door's name. Only this table changes when it does.
 const FIELD_ALIASES = Object.freeze({

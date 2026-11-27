@@ -305,9 +305,11 @@ URL, or the state is `needs_shipping_address` (then every field is asked for). T
 form.
 
 **The fields** (the backend door's names, used as-is by the page and the gateway): `email`, `firstName`, `lastName`,
-`phone`, `addressLine1`, `addressLine2` (optional), `city`, `region`, `postalCode`, `country`. US only for the pilot
-(the rail is USD only): `country` is a one-option select, `region` a 2-letter state select (50 states and DC), the ZIP 5
-or 9 digits. The inputs carry the shipping autocomplete tokens (`shipping given-name`, `shipping family-name`,
+`phone`, `addressLine1`, `addressLine2` (optional), `city`, `region` (optional), `postalCode` (optional), `country`.
+The state and the ZIP are never required: the payment partner asks for neither, and the store's own checkout asks if it
+needs one. They are offered, marked optional, beside any form that asks for the address's first line, though the backend
+never lists them as missing. US only for the pilot (the rail is USD only): `country` is a one-option select, `region`
+a 2-letter state select (50 states and DC), the ZIP 5 or 9 digits, each checked only when given. The inputs carry the shipping autocomplete tokens (`shipping given-name`, `shipping family-name`,
 `shipping address-line1/2`, `shipping address-level2/1`, `shipping postal-code`, `shipping country`, `shipping tel`,
 `email`) and `inputmode` for the phone and the ZIP. There is still NO card field anywhere.
 
@@ -318,7 +320,8 @@ or 9 digits. The inputs carry the shipping autocomplete tokens (`shipping given-
 - needs the link token in `X-Agenpas-Link` (never a cookie, so no cross-site form can send it);
 - limits 5 writes a minute per link, on top of the per-IP bucket;
 - validates: the request's required fields, at most 200 characters, no control characters, an email shape, an
-  E.164-ish phone (normalised, `+1` for a 10-digit US number), a US ZIP, a US state code;
+  E.164-ish phone (normalised, `+1` for a 10-digit US number), a US ZIP and a US state code when given (never
+  required, even when the request names no fields);
 - forwards the normalised address server-to-server to the backend's
   `POST /agent/internal/commerce/purchases/{id}/shipping-address` (same `X-Internal-Key` / `X-Agenpas-Agent-Id` as
   the read), and answers the view the backend returns, so the page moves on to adding a card or approving.
