@@ -50,6 +50,7 @@ const {
   DEFAULT_UCP_VERSION,
   resolveSigningKeys,
 } = require('./ucpBuyerAgentProfile');
+const { merchantDoorFetchFromEnv } = require('./doorRelay/relayFetch');
 
 // Warn-once bookkeeping for configuration warnings: per logger, per message key. Clients are built per call in
 // some paths (ucpWarmHandoff), so "once" has to outlive the client. The module logger is one instance, so with it
@@ -434,12 +435,19 @@ function createUcpBuyerAgentClient(options = {}) {
   // Merchant profiles choose both the storefront origin and the MCP endpoint.
   // Pin each connection through a resolver that refuses private/local ranges,
   // so DNS rebinding cannot pivot this crawl workload into the VPC.
+  //
+  // MERCHANT_DOOR_RELAY=on moves the DEFAULT transport to the merchant door relay (doorRelay/relayFetch.js): the
+  // same request, made by the same pinned transport, from the relay service's own egress instead of this process's.
+  // Off (the default) returns null here and nothing below changes. On without a valid MERCHANT_DOOR_RELAY_URL
+  // returns a fetch that refuses (PIVOTA_RELAY_UNCONFIGURED): door calls fail closed, never back onto this
+  // process's egress. Read per client, like the credential env below. An injected fetch still wins.
   const merchantFetch = options.merchantFetchImpl
     // Test fakes never reach the network. Production uses the pinned HTTPS
     // transport rather than global fetch, whose DNS lookup cannot be bound.
     || (typeof options.fetchImpl === 'function'
       ? options.fetchImpl
-      : createPublicNetworkFetch(options.dnsLookup || nodeDns.lookup));
+      : (merchantDoorFetchFromEnv({ env: process.env, logger: () => configWarnLogger(options) })
+        || createPublicNetworkFetch(options.dnsLookup || nodeDns.lookup)));
   const credential = forceAnonymous
     ? undefined
     : firstNonEmpty(options.credential, process.env.UCP_AGENT_CREDENTIAL);

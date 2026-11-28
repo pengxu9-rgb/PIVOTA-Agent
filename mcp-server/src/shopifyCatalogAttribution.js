@@ -37,6 +37,10 @@
 // SCOPE. US buyers only (the caller passes the market; the saved catalog is a US catalog, and the standing rule is a
 // price in the market's currency or none). Shopify stores only: an id the catalog does not return tracked stays bare.
 
+import doorRelayModule from "../../src/services/doorRelay/relayFetch.js";
+
+const { merchantDoorFetchFromEnv } = doorRelayModule;
+
 export const CATALOG_ATTRIBUTION_FLAG = "SHOPIFY_CATALOG_ATTRIBUTION";
 export const CATALOG_ATTRIBUTION_STORES_ENV = "SHOPIFY_CATALOG_ATTRIBUTION_STORES";
 export const CATALOG_ATTRIBUTION_DENY_ENV = "SHOPIFY_CATALOG_ATTRIBUTION_DENY_HOSTS";
@@ -327,11 +331,21 @@ export function createCatalogAttribution({ env = process.env, fetchImpl = global
 
 let defaultClient = null;
 /**
- * The process's client (its token cache and breaker are per process). Its fetch is read per call from
- * globalThis.fetch, so it never holds on to the fetch of whoever created it first.
+ * The process's fetch for the catalog and its token endpoint, chosen per call. MERCHANT_DOOR_RELAY=on sends both
+ * through the merchant door relay (src/services/doorRelay/relayFetch.js), so this lane leaves from the relay's egress
+ * like every other merchant-door call; on without a valid MERCHANT_DOOR_RELAY_URL it refuses (fails closed, and the
+ * lookup is then a `failed` outcome that builds today's cart). Off (the default): globalThis.fetch, as before.
+ */
+export function attributionFetch(env = process.env) {
+  return merchantDoorFetchFromEnv({ env }) || ((...a) => globalThis.fetch(...a));
+}
+
+/**
+ * The process's client (its token cache and breaker are per process). Its fetch is read per call (attributionFetch:
+ * the relay switch, else globalThis.fetch), so it never holds on to the fetch of whoever created it first.
  */
 export function defaultCatalogAttribution() {
-  if (!defaultClient) defaultClient = createCatalogAttribution({ fetchImpl: (...a) => globalThis.fetch(...a) });
+  if (!defaultClient) defaultClient = createCatalogAttribution({ fetchImpl: (...a) => attributionFetch()(...a) });
   return defaultClient;
 }
 /** Tests only: forget the process client (its token, backoff and breaker). */
