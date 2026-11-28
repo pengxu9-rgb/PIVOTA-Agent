@@ -47,13 +47,36 @@ const OPS = {
   submit_payment: { path: '/agent/v2/payments/checkout-sessions', rid: 'o1', payload: { payment: { order_id: 'o1' } } },
   create_payment_link: { path: '/agent/v2/payments/checkout-sessions', rid: 'o1', payload: { order_id: 'o1' } },
   request_after_sales: { path: '/agent/v2/orders/o1/refunds', rid: 'o1', payload: { status: { order_id: 'o1', reason: 'damaged' } } },
+  cancel_order: { path: '/agent/v2/orders/o1/cancel', rid: 'o1', payload: { order_id: 'o1', idempotency_key: 'idem_cancel_0001' } },
 };
 
 // The kernel's order read (MCP get_order): two GETs on the backend's order routes since FIX_PLAN C-11 (the gateway
-// half), no longer the invoke route. Kept apart from OPS, which is the signed set.
+// half), no longer the invoke route. Kept apart from OPS (POSTs, one request each): it is signed too, per GET.
 const READS = {
   get_order_status: { method: 'get', path: '/agent/v2/orders/o1/tracking', payload: { status: { order_id: 'o1' } } },
 };
+
+// Both GETs of get_order_status, in the order they leave the process: /tracking, then the order itself.
+async function orderReadAttempts(store = PARTNER) {
+  const attempts = [];
+  function reply(uri) {
+    attempts.push({ path: uri, headers: { ...this.req.headers } });
+    return uri.endsWith('/tracking')
+      ? [200, { status: 'success', tracking: { order_id: 'o1', fulfillment_status: 'pending' } }]
+      : [200, { status: 'success', order: { order_id: 'o1', state: 'awaiting_payment' } }];
+  }
+  nock.cleanAll();
+  nock(process.env.PIVOTA_API_BASE).persist().get('/agent/v2/orders/o1/tracking').reply(reply)
+    .get('/agent/v2/orders/o1').reply(reply);
+  let result;
+  try {
+    result = await app._debug.INVOKE_AUTH_CONTEXT.run(store, () => app._debug.invokeCommerceKernelRawUpstream(
+      'get_order_status', READS.get_order_status.payload));
+  } finally {
+    nock.cleanAll();
+  }
+  return { attempts, result };
+}
 
 // Every attempt that left the process: headers and the RAW body bytes (nock hands the parsed JSON body to a
 // reply function; re-serialising it reproduces the sent string, since the gateway sent JSON.stringify of
@@ -151,13 +174,46 @@ test('flag off: no money op carries an assertion (only offers.resolve, as before
   });
 });
 
-test('flag on: offers.resolve stays v1, and get_order_status is not signed (it is not in PARTNER_IDENTITY_OPS)', async () => {
+test('flag on: offers.resolve stays v1', async () => {
   await withFlag('1', async () => {
     const offers = decode((await upstreamHeaders('offers.resolve'))['x-pivota-issuing-agent']);
     assert.equal(offers.version, 'v1');
     assert.equal(offers.payload.op, 'offers.resolve');
-    const read = await upstreamHeaders('get_order_status', PARTNER);
-    assert.equal(read['x-pivota-issuing-agent'], undefined);
+  });
+});
+
+test('flag on: get_order_status signs EACH of its two GETs for the partner, each bound to its own path (P2-A)', async () => {
+  // Unsigned, a partner-owned order read on the gateway's key was another agent's at the backend's strict /tracking
+  // check: 403 -> QUOTE_NOT_FOUND "that quote is no longer available" (review 11-11 P2-A, audit 11-22 F5).
+  await withFlag('1', async () => {
+    const { attempts, result } = await orderReadAttempts();
+    assert.deepEqual(attempts.map((a) => a.path), ['/agent/v2/orders/o1/tracking', '/agent/v2/orders/o1']);
+    const signed = attempts.map((a) => decode(a.headers['x-pivota-issuing-agent']));
+    for (const [i, { version, payload }] of signed.entries()) {
+      assert.equal(version, 'v2');
+      assert.deepEqual([payload.kind, payload.sub, payload.op, payload.m, payload.rid],
+        ['agent', 'agent_partner_a', 'get_order_status', 'GET', 'o1']);
+      assert.equal(payload.p, attempts[i].path, 'each GET is bound to the path it was sent on');
+      assert.equal(payload.bh, sha256(''), 'a GET sends no body');
+      assert.equal(attempts[i].headers['x-api-key'], 'backend_test_key');
+    }
+    assert.notEqual(signed[0].payload.jti, signed[1].payload.jti, 'two requests, two nonces');
+    assert.equal(result.status, 'awaiting_payment', 'the order read still answers the order state');
+  });
+  await withFlag(undefined, async () => {
+    const { attempts } = await orderReadAttempts();
+    assert.equal(attempts.length, 2);
+    for (const a of attempts) assert.equal(a.headers['x-pivota-issuing-agent'], undefined, `flag off: ${a.path} unsigned`);
+  });
+});
+
+test('flag on: an order read or cancel for a degraded or service identity carries no assertion', async () => {
+  await withFlag('1', async () => {
+    for (const store of [{ ...PARTNER, auth_degraded: true }, { auth_mode: 'api_key', agent_id: 'agent_service_fallback' }, {}]) {
+      const { attempts } = await orderReadAttempts(store);
+      for (const a of attempts) assert.equal(a.headers['x-pivota-issuing-agent'], undefined, JSON.stringify(store));
+      assert.equal((await upstreamHeaders('cancel_order', store))['x-pivota-issuing-agent'], undefined, JSON.stringify(store));
+    }
   });
 });
 
@@ -192,8 +248,8 @@ test('flag on: a degraded, fallback or service identity is never asserted on a m
 
 test('the signed set is the money ops plus the per-response mint, and none of them is a cached read op', () => {
   assert.deepEqual([...PARTNER_IDENTITY_OPS].sort(), [
-    'create_order', 'create_payment_link', 'external_seed_links.mint', 'preview_quote',
-    'request_after_sales', 'submit_payment',
+    'cancel_order', 'create_order', 'create_payment_link', 'external_seed_links.mint', 'get_order_status',
+    'preview_quote', 'request_after_sales', 'submit_payment',
   ]);
   for (const cached of ['find_products', 'find_products_multi']) {
     assert.equal(PARTNER_IDENTITY_OPS.has(cached), false);

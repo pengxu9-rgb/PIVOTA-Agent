@@ -26,8 +26,8 @@
 // secret is checked at the token endpoint), and only then trusts the subject.
 //
 // PARTNER IDENTITY ON THE MONEY OPS (FIX_PLAN O-04), behind PARTNER_IDENTITY_FORWARDING_ENABLED
-// (default OFF). The ops in PARTNER_IDENTITY_OPS (the kernel's quote, order, hosted link, payment and
-// after-sales calls, and the per-response seed-link mint, SEED_LINK_MINT_OP) carry a REQUEST-BOUND v2
+// (default OFF). The ops in PARTNER_IDENTITY_OPS (the kernel's quote, order, order read, cancel, hosted link,
+// payment and after-sales calls, and the per-response seed-link mint, SEED_LINK_MINT_OP) carry a REQUEST-BOUND v2
 // token instead (boundIssuingAgentAssertionHeaders). With the backend's flag of the same name on, the
 // backend makes the asserted agent the OWNER of what those routes write (pivota-backend
 // routes/agent_forwarded_owner.py), so two partners calling through this one gateway are two owners,
@@ -71,15 +71,22 @@ const SEED_LINK_MINT_OP = 'external_seed_links.mint';
 
 // Signed only while PARTNER_IDENTITY_FORWARDING_ENABLED is on. Each name is the op this gateway
 // sends upstream, and the backend verifies the token against the op of the route it lands on.
-// get_order_status is NOT here (O-04 review, P3-G4). The kernel now reads it from GET /agent/v2/orders/{id} and
-// /tracking (FIX_PLAN C-11), not the invoke route, so it could be signed; until it is, a kernel order's partner and
-// buyer isolation is the kernel's own record check alone (canonicalExecutor.js, case 'get_order').
+// get_order_status and cancel_order ARE here (review 11-11 P2-A, audit 11-22 F5). With the backend's flag on,
+// create_order makes the partner the order's owner; read or cancelled UNSIGNED on this gateway's key, that order is
+// another agent's, and the backend's strict owner check on /tracking and /cancel answered 403/404, which the kernel
+// turns into QUOTE_NOT_FOUND ("that quote is no longer available"): the agent re-quotes and a buyer can pay twice.
+// Signed, the backend adopts the partner for both routes of the order read (GET /agent/v2/orders/{id} and its
+// /tracking, op get_order_status) and for POST /agent/v2/orders/{id}/cancel (op cancel_order), each request with its
+// own nonce, bound to its own path, with rid = the order id. The kernel's own record check (canonicalExecutor.js,
+// case 'get_order') still runs first; this does not replace it.
 const PARTNER_IDENTITY_OPS = Object.freeze(new Set([
   'preview_quote',
   'create_order',
   'submit_payment',
   'create_payment_link',
   'request_after_sales',
+  'get_order_status',
+  'cancel_order',
   SEED_LINK_MINT_OP,
 ]));
 const ISSUING_AGENT_ASSERTION_VERSION_V2 = 'v2';

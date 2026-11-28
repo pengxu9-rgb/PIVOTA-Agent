@@ -33479,10 +33479,14 @@ function boundAssertionResourceId(op, requestBody, payload) {
     case 'submit_payment':
     case 'create_payment_link':
       return firstNonEmptyString(requestBody?.order_id) || null;
-    case 'request_after_sales': {
+    case 'request_after_sales':
+    case 'get_order_status': {
+      // get_order_status: BOTH of its GETs (/tracking, then the order) act on this one order.
       const status = isPlainObject(payload?.status) ? payload.status : {};
       return firstNonEmptyString(status.order_id, status.orderId) || null;
     }
+    case 'cancel_order':
+      return firstNonEmptyString(payload?.order_id) || null;
     default:
       return null;
   }
