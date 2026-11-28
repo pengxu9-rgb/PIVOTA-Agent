@@ -11,6 +11,10 @@
  *
  * VALIDATION here is the gateway's (the backend validates again). Every message is a CODE, never the value: nothing
  * a buyer typed is ever echoed back or logged. US only for the pilot (the rail is USD only).
+ *
+ * NO ADDRESS FORMAT RULES OF OURS: a state and a ZIP are the buyer's as written (printable, within the length
+ * cap). Which fields a store needs, and in what format, is the store platform's to say in its checkout, and Visa
+ * validates what it is sent.
  */
 
 /** The backend door's fields, in the order the form shows them. */
@@ -41,19 +45,14 @@ const ACTION_KIND = 'shipping_address';
 const STATE = 'needs_shipping_address';
 const PRE_PLACING = new Set(['routing', 'needs_payment_method', 'locking', 'awaiting_buyer_authorization', STATE]);
 
-const US_STATES = Object.freeze([
-  'AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'DC', 'FL', 'GA', 'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY', 'LA', 'ME',
-  'MD', 'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ', 'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA', 'RI',
-  'SC', 'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY',
-]);
-const US_STATE_SET = new Set(US_STATES);
 const COUNTRIES = Object.freeze(['US']);
 
 const MAX_FIELD_CHARS = 200;
+// The backend's own caps for these two (a2a_shipping_address.MAX_LENGTH), so the gateway refuses what the backend would.
+const FIELD_MAX_CHARS = Object.freeze({ region: 100, postalCode: 32 });
 // eslint-disable-next-line no-control-regex
 const CONTROL_RE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@.]+(?:\.[^\s@.]+)+$/;
-const ZIP_RE = /^(\d{5})(?:-?(\d{4}))?$/;
 const PHONE_CHARS_RE = /^[0-9+\s\-().]+$/;
 
 function isPlainObject(value) {
@@ -129,7 +128,7 @@ function validateAddress(body, { required = [] } = {}) {
     }
     if (typeof raw !== 'string') { errors[field] = 'invalid'; continue; }
     const v = raw.trim();
-    if (v.length > MAX_FIELD_CHARS) { errors[field] = 'too_long'; continue; }
+    if (v.length > (FIELD_MAX_CHARS[field] || MAX_FIELD_CHARS)) { errors[field] = 'too_long'; continue; }
     if (CONTROL_RE.test(v)) { errors[field] = 'invalid_characters'; continue; }
     switch (field) {
       case 'email':
@@ -138,16 +137,6 @@ function validateAddress(body, { required = [] } = {}) {
       case 'phone': {
         const p = normalisePhone(v);
         if (!p) errors[field] = 'invalid_phone'; else value[field] = p;
-        break;
-      }
-      case 'postalCode': {
-        const m = ZIP_RE.exec(v);
-        if (!m) errors[field] = 'invalid_postal_code'; else value[field] = m[2] ? `${m[1]}-${m[2]}` : m[1];
-        break;
-      }
-      case 'region': {
-        const r = v.toUpperCase();
-        if (!US_STATE_SET.has(r)) errors[field] = 'invalid_region'; else value[field] = r;
         break;
       }
       case 'country': {
@@ -179,7 +168,6 @@ module.exports = {
   ADDRESS_FIELDS,
   COUNTRIES,
   STATE,
-  US_STATES,
   readAddressRequest,
   sanitizeFieldErrors,
   validateAddress,

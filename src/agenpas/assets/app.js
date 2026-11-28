@@ -979,9 +979,6 @@
   // A plain form of the fields the purchase is missing. There is NO card field: the card is only ever typed on the
   // payment partner's page. The address goes only to this page's own API (same origin) and is never stored.
 
-  var US_STATES = ['AL', 'AK', 'AZ', 'AR', 'CA', 'CO', 'CT', 'DE', 'DC', 'FL', 'GA', 'HI', 'ID', 'IL', 'IN', 'IA', 'KS', 'KY',
-    'LA', 'ME', 'MD', 'MA', 'MI', 'MN', 'MS', 'MO', 'MT', 'NE', 'NV', 'NH', 'NJ', 'NM', 'NY', 'NC', 'ND', 'OH', 'OK', 'OR', 'PA',
-    'RI', 'SC', 'SD', 'TN', 'TX', 'UT', 'VT', 'VA', 'WA', 'WV', 'WI', 'WY'];
   var ADDRESS_FIELDS = {
     email: { label: 'Email', type: 'email', autocomplete: 'email', inputmode: 'email' },
     firstName: { label: 'First name', autocomplete: 'shipping given-name' },
@@ -990,17 +987,17 @@
     addressLine1: { label: 'Address', autocomplete: 'shipping address-line1' },
     addressLine2: { label: 'Apartment, suite, etc. (optional)', autocomplete: 'shipping address-line2', optional: true },
     city: { label: 'City', autocomplete: 'shipping address-level2' },
-    region: { label: 'State', autocomplete: 'shipping address-level1', options: US_STATES.map(function (c) { return [c, c]; }) },
-    postalCode: { label: 'ZIP code', autocomplete: 'shipping postal-code', inputmode: 'numeric' },
+    region: { label: 'State', autocomplete: 'shipping address-level1' },
+    postalCode: { label: 'ZIP code', autocomplete: 'shipping postal-code' },
     country: { label: 'Country', autocomplete: 'shipping country', options: [['US', 'United States']] },
   };
+  // The backend's caps for these two (a2a_shipping_address.MAX_LENGTH); every other field: 200.
+  var FIELD_MAX_CHARS = { region: 100, postalCode: 32 };
   var ADDRESS_ORDER = ['email', 'firstName', 'lastName', 'phone', 'addressLine1', 'addressLine2', 'city', 'region', 'postalCode', 'country'];
   var ERROR_TEXT = {
     required: 'This is required.',
     invalid_email: 'Enter a valid email address.',
     invalid_phone: 'Enter a valid phone number.',
-    invalid_postal_code: 'Enter a 5-digit ZIP code.',
-    invalid_region: 'Choose a state.',
     unsupported_country: 'We can only ship to the United States for now.',
     too_long: 'This is too long.',
     invalid_characters: 'Remove the special characters.',
@@ -1041,11 +1038,9 @@
         if (!fieldOptional(f, added || [])) errors[f] = 'required';
         return;
       }
-      if (v.length > 200) errors[f] = 'too_long';
+      if (v.length > (FIELD_MAX_CHARS[f] || 200)) errors[f] = 'too_long';
       else if (f === 'email' && !/^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(v)) errors[f] = 'invalid_email';
       else if (f === 'phone' && (!/^[0-9+\s\-().]+$/.test(v) || v.replace(/[^0-9]/g, '').length < 10)) errors[f] = 'invalid_phone';
-      else if (f === 'postalCode' && !/^\d{5}(-?\d{4})?$/.test(v)) errors[f] = 'invalid_postal_code';
-      else if (f === 'region' && US_STATES.indexOf(v.toUpperCase()) < 0) errors[f] = 'invalid_region';
       else if (f === 'country' && v.toUpperCase() !== 'US') errors[f] = 'unsupported_country';
     });
     return errors;
