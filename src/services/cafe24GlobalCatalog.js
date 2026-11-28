@@ -65,7 +65,7 @@
 
 const {
   createUcpBuyerAgentClient,
-  createPublicNetworkFetch,
+  createMerchantDoorFetch,
   TRUST_TIER,
   unwrapToolPayload,
   profileAdvertisesCapability,
@@ -471,7 +471,11 @@ function createCafe24CatalogLane(options = {}) {
   const now = typeof options.now === 'function' ? options.now : Date.now;
   const envOf = () => options.env || process.env;
   const logger = options.logger || null;
-  const baseFetch = typeof options.fetchImpl === 'function' ? options.fetchImpl : createPublicNetworkFetch();
+  // The merchant-door transport: createPublicNetworkFetch with MERCHANT_DOOR_RELAY off, the door relay (capped at
+  // this lane's per-call budget) with it on. This lane injects its own fetch into the client, so it has to choose here.
+  const baseFetch = typeof options.fetchImpl === 'function'
+    ? options.fetchImpl
+    : createMerchantDoorFetch(undefined, { timeoutMs: CALL_TIMEOUT_MS });
   // The refusal flush timer. Unref'd, so it never holds the process open; injectable for tests.
   const scheduleTimer = typeof options.setTimer === 'function'
     ? options.setTimer

@@ -6,12 +6,13 @@
 //
 // Only a merchant PDP URL may select the storefront. A variant id must match exactly, or every variant must publish
 // the same price and currency; a product-level minimum is not an offer for an arbitrary variant.
-const { createPublicNetworkFetch } = require('./ucpBuyerAgentClient');
+const { createMerchantDoorFetch } = require('./ucpBuyerAgentClient');
 const { isRestatedProductId } = require('./merchantVariantSource');
 const storefrontProductPage = require('./storefrontProductPage');
 const { noteSearchOverlay, searchOverlayRequestTag } = require('../observability/priceVerificationLog');
 
-const publicFetch = createPublicNetworkFetch();
+// createPublicNetworkFetch with MERCHANT_DOOR_RELAY off, the door relay with it on (chosen per call).
+const publicFetch = createMerchantDoorFetch();
 const cache = new Map();
 const TTL_MS = 120000;
 const TIMEOUT_MS = 1800;

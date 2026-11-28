@@ -134,7 +134,7 @@ function markClientForDestroy(client) {
 }
 const { probePdpRouteIdExistence } = require('./services/pdpRouteIdExistence');
 const { normalizeShopifyAdminHost } = require('./services/shopifyAdminHost');
-const { createPublicNetworkFetch } = require('./services/ucpBuyerAgentClient');
+const { createPublicNetworkFetch, createMerchantDoorFetch } = require('./services/ucpBuyerAgentClient');
 const { overlayLiveMerchantSearchPrices, searchTopKSettings } = require('./services/liveMerchantSearchPrice');
 // Cafe24 Global Catalog, search-only and shadow-only (CAFE24_CATALOG_SEARCH, default off): counts, never served.
 const cafe24GlobalCatalog = require('./services/cafe24GlobalCatalog');
@@ -11985,7 +11985,8 @@ async function fetchShopifyMerchantCurrency(merchantId) {
     // The 2 MiB wire cap this transport imposes is not a risk on this call the way it was on the
     // paginated products.json lane (#2143): shop.json returns ONE `shop` object with a fixed scalar
     // field set — there is no collection in it to grow. Losing gzip is likewise immaterial at that size.
-    const fetchPublic = createPublicNetworkFetch();
+    // createPublicNetworkFetch with MERCHANT_DOOR_RELAY off, the door relay with it on (chosen per call).
+    const fetchPublic = createMerchantDoorFetch(undefined, { timeoutMs: SHOPIFY_MERCHANT_CURRENCY_TIMEOUT_MS });
     const resp = await fetchPublic(`https://${host}/admin/api/2024-07/shop.json`, {
       method: 'GET',
       headers: {

@@ -29,7 +29,8 @@
 // SHAPE: only `https://<host>/products/<handle>` (the same shape liveMerchantSearchPrice reads). Anything else is
 // `unknown`, never gone.
 
-const { createPublicNetworkFetch } = require('./ucpBuyerAgentClient');
+// The merchant-door transport: createPublicNetworkFetch with MERCHANT_DOOR_RELAY off, the door relay with it on.
+const { createMerchantDoorFetch } = require('./ucpBuyerAgentClient');
 
 const TTL_MS = 120000;
 const MAX_ENTRIES = 1000;
@@ -149,7 +150,7 @@ async function readStorefrontProductPage(rawUrl, { fetchImpl, timeoutMs = DEFAUL
     return { ...base, state: 'live', reason: 'ok', variantIds: live.variantIds, variantCodes: live.variantCodes, cacheHit: true };
   }
 
-  const doFetch = fetchImpl || (defaultFetch = defaultFetch || createPublicNetworkFetch());
+  const doFetch = fetchImpl || (defaultFetch = defaultFetch || createMerchantDoorFetch());
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {

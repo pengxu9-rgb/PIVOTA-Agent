@@ -50,6 +50,7 @@ const {
   DEFAULT_UCP_VERSION,
   resolveSigningKeys,
 } = require('./ucpBuyerAgentProfile');
+const { merchantDoorFetchFromEnv } = require('./doorRelay/relayFetch');
 
 // Warn-once bookkeeping for configuration warnings: per logger, per message key. Clients are built per call in
 // some paths (ucpWarmHandoff), so "once" has to outlive the client. The module logger is one instance, so with it
@@ -411,6 +412,35 @@ function createPublicNetworkFetch(lookup) {
 }
 
 /**
+ * THE MERCHANT-DOOR TRANSPORT FOR CALLERS OUTSIDE THIS CLIENT (storefront page reads, products.json, the Cafe24
+ * lane, shop.json, signer key fetches). Chosen PER CALL: with MERCHANT_DOOR_RELAY off it is exactly
+ * createPublicNetworkFetch(lookup); with it on, the same request goes through the merchant door relay
+ * (doorRelay/relayFetch.js) after the same local pre-flight this transport runs (https, no userinfo, no forbidden
+ * literal or name), so a caller sees the same refusals either way. On without a valid MERCHANT_DOOR_RELAY_URL it
+ * refuses (PIVOTA_RELAY_UNCONFIGURED): it never falls back to this process's egress.
+ *
+ * `timeoutMs`, when the caller knows its budget, is passed to the relay as the call's time cap. Without it the
+ * caller's own AbortSignal bounds the call (the relay stops the upstream when the hop is dropped) and the relay's
+ * ceiling is the backstop.
+ */
+function createMerchantDoorFetch(lookup = nodeDns.lookup, { timeoutMs, logger } = {}) {
+  const direct = createPublicNetworkFetch(lookup);
+  return async (url, options = {}) => {
+    const relay = merchantDoorFetchFromEnv({ env: process.env, logger });
+    if (!relay) return direct(url, options);
+    const parsed = normalizeBaseUrl(url, 'merchantEndpoint');
+    if (forbiddenLiteralHost(parsed.hostname)) {
+      throw codedError('merchant endpoint must resolve to a public address', 'PIVOTA_SSRF_LITERAL');
+    }
+    if (forbiddenHostName(parsed.hostname)) {
+      throw codedError('merchant endpoint host is never a merchant', 'PIVOTA_SSRF_NAME');
+    }
+    const budget = Number.isFinite(options.timeoutMs) ? options.timeoutMs : timeoutMs;
+    return relay(parsed.toString(), Number.isFinite(budget) ? { ...options, timeoutMs: budget } : options);
+  };
+}
+
+/**
  * Create a UCP buyer-agent client.
  * @param {{
  *   credential?: string,        // JWT/token for the TOKEN tier. Defaults to env UCP_AGENT_CREDENTIAL. Never logged.
@@ -434,12 +464,24 @@ function createUcpBuyerAgentClient(options = {}) {
   // Merchant profiles choose both the storefront origin and the MCP endpoint.
   // Pin each connection through a resolver that refuses private/local ranges,
   // so DNS rebinding cannot pivot this crawl workload into the VPC.
+  //
+  // MERCHANT_DOOR_RELAY=on moves the DEFAULT transport to the merchant door relay (doorRelay/relayFetch.js): the
+  // same request, made by the same pinned transport, from the relay service's own egress instead of this process's.
+  // Off (the default) returns null here and nothing below changes. On without a valid MERCHANT_DOOR_RELAY_URL
+  // returns a fetch that refuses (PIVOTA_RELAY_UNCONFIGURED): door calls fail closed, never back onto this
+  // process's egress. Read per client, like the credential env below. An injected fetch still wins.
+  // The relay is given this client's per-call budget (timeoutMs, below) as its time cap.
+  const relayFetch = (options.merchantFetchImpl || typeof options.fetchImpl === 'function')
+    ? null
+    : merchantDoorFetchFromEnv({ env: process.env, logger: () => configWarnLogger(options) });
   const merchantFetch = options.merchantFetchImpl
     // Test fakes never reach the network. Production uses the pinned HTTPS
     // transport rather than global fetch, whose DNS lookup cannot be bound.
     || (typeof options.fetchImpl === 'function'
       ? options.fetchImpl
-      : createPublicNetworkFetch(options.dnsLookup || nodeDns.lookup));
+      : (relayFetch
+        ? (url, init) => relayFetch(url, { ...init, timeoutMs })
+        : createPublicNetworkFetch(options.dnsLookup || nodeDns.lookup)));
   const credential = forceAnonymous
     ? undefined
     : firstNonEmpty(options.credential, process.env.UCP_AGENT_CREDENTIAL);
@@ -2181,6 +2223,7 @@ module.exports = {
   forbiddenHostName,
   createPublicOnlyLookup,
   createPublicNetworkFetch,
+  createMerchantDoorFetch,
   toFetchResponse,
   MAX_MERCHANT_RESPONSE_BYTES,
 };
