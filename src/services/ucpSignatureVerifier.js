@@ -43,7 +43,7 @@
 
 const nodeCrypto = require('crypto');
 const nodeDns = require('node:dns');
-const { createPublicNetworkFetch } = require('./ucpBuyerAgentClient');
+const { createMerchantDoorFetch } = require('./ucpBuyerAgentClient');
 const {
   importPublicJwk,
   requestView,
@@ -392,7 +392,8 @@ function createUcpSignatureVerifier({
   const bindMeta = checkMetaBinding === undefined ? kind === PROFILE_KIND.PLATFORM : Boolean(checkMetaBinding);
   const keyFetch = typeof fetchImpl === 'function'
     ? fetchImpl
-    : createPublicNetworkFetch(typeof dnsLookup === 'function' ? dnsLookup : nodeDns.lookup);
+    // createPublicNetworkFetch with MERCHANT_DOOR_RELAY off, the door relay with it on (chosen per call).
+    : createMerchantDoorFetch(typeof dnsLookup === 'function' ? dnsLookup : nodeDns.lookup);
   const keyCache = createProfileKeyCache({ fetchImpl: keyFetch, nowMs });
 
   function requiredComponents(view, hasBody) {

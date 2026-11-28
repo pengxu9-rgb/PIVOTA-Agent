@@ -225,6 +225,13 @@ describe('payment partners never use the relay', () => {
     'src/services/doorRelay/server.js',
     'src/services/ucpBuyerAgentClient.js',
     'mcp-server/src/shopifyCatalogAttribution.js',
+    // Merchant-facing reads moved onto createMerchantDoorFetch (G1). Each is pinned by count in the inventory below.
+    'src/server.js', // shop.json currency read only
+    'src/services/cafe24GlobalCatalog.js',
+    'src/services/liveMerchantSearchPrice.js',
+    'src/services/shopifyVariantResolver.js',
+    'src/services/storefrontProductPage.js',
+    'src/services/ucpSignatureVerifier.js',
     'tests/door_relay_server.node.test.cjs',
     'tests/door_relay_fetch.node.test.cjs',
     'tests/door_relay_wiring.node.test.cjs',
@@ -234,7 +241,7 @@ describe('payment partners never use the relay', () => {
   const SKIP_ANYWHERE = new Set(['node_modules', '.git']);
   const SKIP_TOP = new Set(['artifacts', 'tmp', 'reports', 'datasets', 'data']);
   const CODE_RE = /\.(c|m)?[jt]s$/;
-  const NEEDLE = /doorRelay|relayFetch|MERCHANT_DOOR_RELAY/;
+  const NEEDLE = /doorRelay|relayFetch|MERCHANT_DOOR_RELAY|createMerchantDoorFetch/;
 
   function* walk(dir) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -272,5 +279,185 @@ describe('payment partners never use the relay', () => {
       const required = [...source.matchAll(/require\(\s*['"]([^'"]+)['"]\s*\)/g)].map((m) => m[1]);
       for (const spec of required) assert.equal(PAYMENT_RE.test(spec), false, `${rel} requires ${spec}`);
     }
+  });
+});
+
+// THE OUTBOUND INVENTORY. Every merchant-transport primitive in gateway runtime code (src, mcp-server/src, connectors,
+// safety-kernel/src), counted per file, against a pinned list. A NEW direct site (a createPublicNetworkFetch that is not
+// the relay's own, a hand-built pinned lookup, a raw node:https request, another axios public-URL lane) fails here, and
+// so does a site that moves: either way the list and its reasons are updated on purpose. Generic fetch/axios calls
+// cannot be told apart from internal ones by reading source, so a second pin lists the files that combine a
+// merchant-door path with a generic outbound call.
+describe('merchant-facing outbound inventory', () => {
+  const ROOT = path.join(__dirname, '..');
+  const SCAN = ['src', 'mcp-server/src', 'connectors', 'safety-kernel/src'];
+  const PRIMITIVES = {
+    // createPublicNetworkFetch: the transport that leaves from THIS process's egress.
+    direct_transport: /\bcreatePublicNetworkFetch\s*\(/g,
+    // The switching transport: direct with the relay off, the relay with it on. Pinned so a new caller is a decision.
+    door_fetch: /\bcreateMerchantDoorFetch\s*\(/g,
+    pinned_lookup: /\bcreatePublicOnlyLookup\s*\(/g,
+    raw_https: /\b(?:https|nodeHttps|http2|nodeHttp2)\.(?:request|get|connect)\s*\(/g,
+    axios_public_lane: /\bcreatePublicUrlFetch\s*\(/g,
+  };
+  // file -> { primitive: count }, each with why it is where it is.
+  const EXPECTED = {
+    // The transport itself (definition, createMerchantDoorFetch's off branch, the client's off default), its
+    // pinned lookup (definition + use) and its one node:https request.
+    'src/services/ucpBuyerAgentClient.js': { direct_transport: 3, door_fetch: 1, pinned_lookup: 2, raw_https: 1 },
+    // The relay service's own outbound call: it runs on the relay's egress, not the gateway's.
+    'src/services/doorRelay/server.js': { direct_transport: 1 },
+    // LATER PHASE: the AgenPaz product image fetcher (src/agenpas/productImage.js), wired here. Stays direct.
+    // shop.json currency read: moved.
+    'src/server.js': { direct_transport: 1, door_fetch: 1 },
+    'src/services/cafe24GlobalCatalog.js': { door_fetch: 1 },
+    'src/services/liveMerchantSearchPrice.js': { door_fetch: 1 },
+    'src/services/shopifyVariantResolver.js': { door_fetch: 1 },
+    'src/services/storefrontProductPage.js': { door_fetch: 1 },
+    'src/services/ucpSignatureVerifier.js': { door_fetch: 1 },
+    // LATER PHASE: the aurora BFF product-URL lane (axios, decoded-size cap, gzip): its fence and its one use.
+    'src/services/publicUrlFetch.js': { pinned_lookup: 2, axios_public_lane: 1 },
+    // axios public-URL lane (LATER PHASE, above), and one node:https request to the Gemini REST API (not a merchant).
+    'src/auroraBff/routes.js': { axios_public_lane: 1, raw_https: 1 },
+  };
+  // Files whose code names a merchant-door path AND makes a generic fetch/axios call.
+  const MERCHANT_PATH_RE = /\/\.well-known\/ucp|products\.json|\/admin\/api\/|\/api\/ucp\/mcp|\/cart\.js|\.myshopify\.com/;
+  const GENERIC_CALL_RE = /\bglobalThis\.fetch\b|\bglobal\.fetch\b|\baxios\s*\.\s*(?:get|post|put|request|head)\s*\(|\baxios\s*\(|(?<![\w.])fetch\s*\(/;
+  const EXPECTED_GENERIC = [
+    // Serves our own /.well-known/ucp routes; its generic calls go to our backend and model APIs (sampled), and its
+    // one merchant admin read (shop.json) is on createMerchantDoorFetch.
+    'src/server.js',
+    // The client's token exchange (global fetch to the configured token endpoint) and its own profile URL helpers.
+    'src/services/ucpBuyerAgentClient.js',
+    // The catalog and its token endpoint, through attributionFetch (the relay when on).
+    'mcp-server/src/shopifyCatalogAttribution.js',
+    // LATER PHASE: legacy Shopify admin connector (globalThis.fetch); not required by gateway runtime code.
+    'connectors/shopify/ShopifyConnector.js',
+  ];
+
+  function codeLines(file) {
+    return fs.readFileSync(file, 'utf8').split('\n').filter((line) => {
+      const t = line.trim();
+      return !(t.startsWith('*') || t.startsWith('//') || t.startsWith('/*'));
+    });
+  }
+  function* walkCode(dir) {
+    if (!fs.existsSync(dir)) return;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (entry.name === 'node_modules' || entry.name === '.git') continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) yield* walkCode(full);
+      else if (entry.isFile() && /\.(c|m)?[jt]s$/.test(entry.name)) yield full;
+    }
+  }
+  function scan() {
+    const counts = {};
+    const generic = [];
+    for (const root of SCAN) {
+      for (const file of walkCode(path.join(ROOT, root))) {
+        const rel = path.relative(ROOT, file).split(path.sep).join('/');
+        const lines = codeLines(file);
+        const text = lines.join('\n');
+        for (const [name, re] of Object.entries(PRIMITIVES)) {
+          const n = (text.match(re) || []).length;
+          if (n) (counts[rel] ||= {})[name] = n;
+        }
+        if (MERCHANT_PATH_RE.test(text) && GENERIC_CALL_RE.test(text)) generic.push(rel);
+      }
+    }
+    return { counts, generic: generic.sort() };
+  }
+
+  test('every merchant-transport primitive is where the inventory says, and nowhere else', () => {
+    const { counts } = scan();
+    assert.deepEqual(counts, EXPECTED,
+      'a merchant-facing transport was added, moved or removed: route it through createMerchantDoorFetch (or the '
+      + 'buyer client) when the relay must carry it, and update this inventory with the reason either way');
+  });
+
+  test('the files that pair a merchant-door path with a generic fetch/axios call are the pinned ones', () => {
+    assert.deepEqual(scan().generic, [...EXPECTED_GENERIC].sort());
+  });
+
+  test('no payment, card or partner-rail module holds a merchant transport primitive', () => {
+    for (const rel of Object.keys(EXPECTED)) assert.equal(PAYMENT_RE_INVENTORY.test(rel), false, rel);
+  });
+  const PAYMENT_RE_INVENTORY = /reap|evonet|visa|agenpa[sz]|a2a|card|payment|psp|stripe|adyen/i;
+});
+
+describe('moved merchant reads follow the switch', () => {
+  const { createMerchantDoorFetch } = require('../src/services/ucpBuyerAgentClient');
+
+  test('createMerchantDoorFetch off: the pinned node:https transport; on: the relay, with the caller budget', async () => {
+    const doorFetch = createMerchantDoorFetch(PUBLIC_LOOKUP, { timeoutMs: 2500 });
+    await assert.rejects(doorFetch('https://merchant.example/products/x.json'), { code: 'ECONNRESET' });
+    assert.equal(httpsCalls.length, 1);
+    assert.equal(fetchCalls.length, 0);
+    process.env.MERCHANT_DOOR_RELAY = 'on';
+    process.env.MERCHANT_DOOR_RELAY_URL = RELAY;
+    stubFetch(() => ({ json: { ok: true } }));
+    const res = await doorFetch('https://merchant.example/products/x.json', { headers: { accept: 'application/json' } });
+    assert.equal(res.status, 200);
+    assert.equal(httpsCalls.length, 1, 'no new direct socket');
+    const [hop] = relayHops();
+    const payload = JSON.parse(hop.init.body);
+    assert.equal(payload.url, 'https://merchant.example/products/x.json');
+    assert.equal(payload.timeout_ms, 2500);
+    assert.deepEqual(payload.headers, [['accept', 'application/json']]);
+  });
+
+  test('createMerchantDoorFetch on: the local pre-flight still refuses before any hop', async () => {
+    process.env.MERCHANT_DOOR_RELAY = 'on';
+    process.env.MERCHANT_DOOR_RELAY_URL = RELAY;
+    stubFetch(() => ({ json: {} }));
+    const doorFetch = createMerchantDoorFetch();
+    await assert.rejects(doorFetch('https://169.254.169.254/x'), { code: 'PIVOTA_SSRF_LITERAL' });
+    await assert.rejects(doorFetch('https://metadata.google.internal/x'), { code: 'PIVOTA_SSRF_NAME' });
+    await assert.rejects(doorFetch('http://merchant.example/x'), /must be https/);
+    await assert.rejects(doorFetch('https://u:p@merchant.example/x'), /userinfo/);
+    assert.equal(fetchCalls.length, 0);
+    assert.equal(httpsCalls.length, 0);
+  });
+
+  test('createMerchantDoorFetch on + no URL: refuses, nothing goes out', async () => {
+    process.env.MERCHANT_DOOR_RELAY = 'on';
+    const doorFetch = createMerchantDoorFetch(PUBLIC_LOOKUP, { logger: { warn() {} } });
+    await assert.rejects(doorFetch('https://merchant.example/x'), { code: 'PIVOTA_RELAY_UNCONFIGURED' });
+    assert.equal(fetchCalls.length + httpsCalls.length, 0);
+  });
+
+  test('the buyer client sends its per-call budget (default 15 s) to the relay', async () => {
+    process.env.MERCHANT_DOOR_RELAY = 'on';
+    process.env.MERCHANT_DOOR_RELAY_URL = RELAY;
+    stubFetch(() => ({ json: { ucp: {} } }));
+    await createUcpBuyerAgentClient({ forceAnonymous: true, retryAttempts: 0 }).discoverEndpoint('https://merchant.example');
+    await createUcpBuyerAgentClient({ forceAnonymous: true, retryAttempts: 0, timeoutMs: 2500 }).discoverEndpoint('https://merchant.example');
+    assert.deepEqual(relayHops().map((h) => JSON.parse(h.init.body).timeout_ms), [15000, 2500]);
+  });
+
+  test('storefrontProductPage\'s default fetch goes through the relay when on', async () => {
+    process.env.MERCHANT_DOOR_RELAY = 'on';
+    process.env.MERCHANT_DOOR_RELAY_URL = RELAY;
+    stubFetch(() => ({ json: { product: { variants: [{ id: 1 }] } } }));
+    const { readStorefrontProductPage } = require('../src/services/storefrontProductPage');
+    await readStorefrontProductPage('https://shop-one.example/products/relay-wiring-handle');
+    assert.equal(httpsCalls.length, 0);
+    assert.equal(relayHops().length >= 1, true);
+    assert.equal(new URL(JSON.parse(relayHops()[0].init.body).url).hostname, 'shop-one.example');
+  });
+
+  test('shopifyVariantResolver\'s products.json read goes through the relay when on, and directly when off', async () => {
+    const { resolveVariantViaProductsJson } = require('../src/services/shopifyVariantResolver');
+    await resolveVariantViaProductsJson({ brandDomain: 'shop-two.example', handle: 'h' }, { maxPages: 1, timeoutMs: 1000 });
+    assert.equal(httpsCalls.length > 0, true, 'off: the pinned transport');
+    assert.equal(fetchCalls.length, 0);
+    httpsCalls.length = 0;
+    process.env.MERCHANT_DOOR_RELAY = 'on';
+    process.env.MERCHANT_DOOR_RELAY_URL = RELAY;
+    stubFetch(() => ({ status: 404, json: {} }));
+    await resolveVariantViaProductsJson({ brandDomain: 'shop-two.example', handle: 'h' }, { maxPages: 1, timeoutMs: 1000 });
+    assert.equal(httpsCalls.length, 0);
+    assert.equal(relayHops().length > 0, true);
+    for (const hop of relayHops()) assert.equal(new URL(JSON.parse(hop.init.body).url).hostname, 'shop-two.example');
   });
 });

@@ -48,7 +48,7 @@
 
 const nodeNet = require('node:net');
 const nodeZlib = require('node:zlib');
-const { createPublicNetworkFetch } = require('./ucpBuyerAgentClient');
+const { createMerchantDoorFetch } = require('./ucpBuyerAgentClient');
 
 const VARIANT_GID_PREFIX = 'gid://shopify/ProductVariant/';
 const VARIANT_GID_RE = /gid:\/\/shopify\/ProductVariant\/(\d+)/i;
@@ -264,8 +264,9 @@ function pickVariantFromProductNode(product, opts = {}) {
 }
 
 // One pinned transport for the whole module. `createPublicNetworkFetch` only builds closures and there is
-// no require cycle to defer, so there is nothing to gain from constructing it lazily.
-const publicFetch = createPublicNetworkFetch();
+// no require cycle to defer, so there is nothing to gain from constructing it lazily. createMerchantDoorFetch is
+// that transport with MERCHANT_DOOR_RELAY off, and the door relay with it on (chosen per call).
+const publicFetch = createMerchantDoorFetch();
 
 /**
  * PRODUCT.JSON fallback — fetch the brand's public products.json and map handle/title -> variant GID.

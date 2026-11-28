@@ -16,13 +16,18 @@
 // lookup, so a name that rebinds to a private address cannot pivot into this service's VPC; a 2 MB response cap; a
 // total time cap. The outbound request is made by createPublicNetworkFetch itself, not a copy of it.
 //
+// TIME. The caller sends its budget as `timeout_ms`; the call is capped at that, and never past the relay's ceiling
+// (DOOR_RELAY_MAX_TIMEOUT_MS, default 30 s, which is also the cap when no budget is sent). A caller that hangs up
+// aborts the upstream request too.
+//
 // REDIRECTS ARE NEVER FOLLOWED. A 3xx goes back to the caller with its Location, and the caller's own redirect rule
 // applies there. The relay adds no hop of its own.
 //
 // HEADERS. Only the JSON `headers` list is forwarded, in its order, with its names as given, minus hop-by-hop headers.
 // The headers of the request that reached THIS service (the gateway's Google ID token in Authorization, Cloud Run's
-// forwarding headers) are never forwarded: by construction they are not in the list. A list entry whose value equals
-// this request's own Authorization is refused, so a caller bug cannot copy our token to a merchant.
+// forwarding headers) are never forwarded: by construction they are not in the list. A request whose URL, body or
+// any forwarded header value (under any name, after duplicates are merged) CONTAINS the token of this request's own
+// Authorization is refused, so a caller bug cannot copy our token to a merchant.
 //
 // LOGS. One line per call: method, target HOST, status, bytes, ms, error_code. Never the path, the query, a header or
 // a body (continue_url and tokens live there).
@@ -39,7 +44,9 @@ const {
 } = require('../ucpBuyerAgentClient');
 
 const DEFAULT_PORT = 8080;
-const DEFAULT_TIMEOUT_MS = 10_000;
+const DEFAULT_MAX_TIMEOUT_MS = 30_000;
+// A relay token shorter than this is not searched for in what is forwarded (it would match by accident).
+const MIN_TOKEN_SEARCH_LENGTH = 8;
 const DEFAULT_MAX_BODY_BYTES = 1024 * 1024;
 const MAX_URL_LENGTH = 8192;
 const MAX_HEADER_COUNT = 64;
@@ -101,7 +108,7 @@ function positiveInt(raw, fallback) {
 function configFromEnv() {
   return {
     port: positiveInt(process.env.PORT, DEFAULT_PORT),
-    timeoutMs: positiveInt(process.env.DOOR_RELAY_TIMEOUT_MS, DEFAULT_TIMEOUT_MS),
+    maxTimeoutMs: positiveInt(process.env.DOOR_RELAY_MAX_TIMEOUT_MS, DEFAULT_MAX_TIMEOUT_MS),
     maxBodyBytes: positiveInt(process.env.DOOR_RELAY_MAX_BODY_BYTES, DEFAULT_MAX_BODY_BYTES),
   };
 }
@@ -124,9 +131,17 @@ function parseTarget(raw) {
   return parsed;
 }
 
+/** The raw token of the inbound Authorization (scheme dropped), or null when there is none worth searching for. */
+function relayTokenOf(authorization) {
+  if (typeof authorization !== 'string') return null;
+  const token = authorization.trim().replace(/^bearer\s+/i, '').trim();
+  return token.length >= MIN_TOKEN_SEARCH_LENGTH ? token : null;
+}
+
 /**
  * The headers to send, as an insertion-ordered object (node:https sends names in that order, with their case).
- * Hop-by-hop headers and any header the Connection header names are dropped; a repeated name is joined with ", ".
+ * Hop-by-hop headers and any header the Connection header names are dropped; a repeated name is joined with ", ",
+ * except Content-Length, which is sent once. Any value that carries the relay token is refused.
  */
 function forwardableHeaders(list, { relayAuthorization, bodyLength }) {
   if (list === undefined || list === null) return {};
@@ -148,18 +163,18 @@ function forwardableHeaders(list, { relayAuthorization, bodyLength }) {
       for (const token of value.split(',')) if (token.trim()) named.add(token.trim().toLowerCase());
     }
   }
+  const token = relayTokenOf(relayAuthorization);
   const out = {};
   const keyOf = new Map(); // lower-case name -> the key used in `out`
   for (const [name, value] of pairs) {
     const lower = name.toLowerCase();
     if (HOP_BY_HOP.has(lower) || named.has(lower)) continue;
-    if (lower === 'authorization' && relayAuthorization && value === relayAuthorization) {
-      // Our own ID token in the merchant's header list: a caller bug. Refuse rather than strip, so it is seen.
-      throw refusal('PIVOTA_RELAY_BAD_REQUEST');
-    }
     if (lower === 'content-length') {
-      // Kept only when it states the body we send; the transport frames the body otherwise.
-      if (String(bodyLength) !== value.trim()) continue;
+      // Kept only when it states the body we send, and only once; the transport frames the body otherwise.
+      if (String(bodyLength) !== value.trim() || keyOf.has(lower)) continue;
+      keyOf.set(lower, name);
+      out[name] = value.trim();
+      continue;
     }
     if (keyOf.has(lower)) {
       const key = keyOf.get(lower);
@@ -168,6 +183,11 @@ function forwardableHeaders(list, { relayAuthorization, bodyLength }) {
       keyOf.set(lower, name);
       out[name] = value;
     }
+  }
+  if (token) {
+    // Checked on what is SENT (merged values included), under every name. Our own ID token in the merchant's
+    // headers is a caller bug: refuse rather than strip, so it is seen.
+    for (const value of Object.values(out)) if (value.includes(token)) throw refusal('PIVOTA_RELAY_BAD_REQUEST');
   }
   return out;
 }
@@ -228,7 +248,7 @@ function errorCodeOf(error) {
  *   transport?: (url: string, init: object) => Promise<Response>,  // default createPublicNetworkFetch(lookup)
  *   lookup?: Function,                                             // default dns.lookup, behind the public-only lookup
  *   log?: (entry: object) => void,
- *   timeoutMs?: number,
+ *   maxTimeoutMs?: number,                                          // ceiling on any call (default 30 s)
  *   maxBodyBytes?: number,
  *   now?: () => number,
  * }} [options]
@@ -238,7 +258,7 @@ function createDoorRelayHandler(options = {}) {
     ? options.transport
     : createPublicNetworkFetch(options.lookup || nodeDns.lookup);
   const log = typeof options.log === 'function' ? options.log : defaultLogLine;
-  const timeoutMs = positiveInt(options.timeoutMs, DEFAULT_TIMEOUT_MS);
+  const maxTimeoutMs = positiveInt(options.maxTimeoutMs, DEFAULT_MAX_TIMEOUT_MS);
   const maxBodyBytes = positiveInt(options.maxBodyBytes, DEFAULT_MAX_BODY_BYTES);
   // JSON overhead on top of a base64 body: the URL, the header list, the keys.
   const maxRequestBytes = Math.ceil(maxBodyBytes / 3) * 4 + MAX_URL_LENGTH + MAX_HEADER_BYTES * 2 + 4096;
@@ -255,6 +275,7 @@ function createDoorRelayHandler(options = {}) {
 
     let target;
     let init;
+    let timeoutMs = maxTimeoutMs;
     try {
       const raw = await readRequestBody(req, maxRequestBytes);
       let request;
@@ -267,10 +288,14 @@ function createDoorRelayHandler(options = {}) {
       line.host = target.hostname;
       const body = decodeBody(request.body_b64, maxBodyBytes);
       if (body && method === 'GET') throw refusal('PIVOTA_RELAY_BAD_REQUEST');
-      const headers = forwardableHeaders(request.headers, {
-        relayAuthorization: typeof req.headers.authorization === 'string' ? req.headers.authorization : null,
-        bodyLength: body ? body.length : 0,
-      });
+      const relayAuthorization = typeof req.headers.authorization === 'string' ? req.headers.authorization : null;
+      const headers = forwardableHeaders(request.headers, { relayAuthorization, bodyLength: body ? body.length : 0 });
+      const token = relayTokenOf(relayAuthorization);
+      if (token && (request.url.includes(token) || (body && body.includes(token)))) throw refusal('PIVOTA_RELAY_BAD_REQUEST');
+      if (request.timeout_ms !== undefined && request.timeout_ms !== null) {
+        if (!Number.isInteger(request.timeout_ms) || request.timeout_ms <= 0) throw refusal('PIVOTA_RELAY_BAD_REQUEST');
+        timeoutMs = Math.min(request.timeout_ms, maxTimeoutMs);
+      }
       init = { method, headers, body };
     } catch (error) {
       const code = errorCodeOf(error);
@@ -337,9 +362,9 @@ function createDoorRelayHandler(options = {}) {
 }
 
 function startDoorRelayServer(config = configFromEnv(), options = {}) {
-  const server = nodeHttp.createServer(createDoorRelayHandler({ ...options, timeoutMs: config.timeoutMs, maxBodyBytes: config.maxBodyBytes }));
+  const server = nodeHttp.createServer(createDoorRelayHandler({ ...options, maxTimeoutMs: config.maxTimeoutMs, maxBodyBytes: config.maxBodyBytes }));
   // Slow-client bounds on the inbound side; the outbound side has its own time cap.
-  server.requestTimeout = config.timeoutMs + 5_000;
+  server.requestTimeout = config.maxTimeoutMs + 5_000;
   server.headersTimeout = 10_000;
   server.listen(config.port);
   return server;
@@ -360,6 +385,6 @@ module.exports = {
   parseTarget,
   HOP_BY_HOP,
   REFUSAL_STATUS,
-  DEFAULT_TIMEOUT_MS,
+  DEFAULT_MAX_TIMEOUT_MS,
   DEFAULT_MAX_BODY_BYTES,
 };

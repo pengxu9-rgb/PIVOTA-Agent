@@ -20,6 +20,7 @@ const {
   merchantDoorRelayMode,
   MAX_MERCHANT_RESPONSE_BYTES,
   METADATA_IDENTITY_URL,
+  RELAY_MAX_TIMEOUT_MS,
 } = require('../src/services/doorRelay/relayFetch');
 const buyerClient = require('../src/services/ucpBuyerAgentClient');
 
@@ -139,8 +140,31 @@ describe('relayFetch', () => {
     const hopFetch = (_url, init) => new Promise((_resolve, reject) => {
       init.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
     });
-    const relayFetch = createRelayFetch({ relayUrl: RELAY, idTokenProvider: async () => 't', hopFetch, timeoutMs: 20 });
+    const relayFetch = createRelayFetch({ relayUrl: RELAY, idTokenProvider: async () => 't', hopFetch, timeoutMs: 20, hopMarginMs: 0 });
     await assert.rejects(relayFetch('https://merchant.example/x'), (err) => err.code === 'PIVOTA_RELAY_TIMEOUT' && err.name === 'AbortError');
+  });
+
+  test('the caller\'s budget goes to the relay as timeout_ms (held to the ceiling); none sends the ceiling', async () => {
+    const { calls, hopFetch } = fakeHop(okEnvelope(200));
+    const relayFetch = createRelayFetch({ relayUrl: RELAY, idTokenProvider: async () => 't', hopFetch });
+    await relayFetch('https://merchant.example/a', { timeoutMs: 15000 });
+    await relayFetch('https://merchant.example/b', { timeoutMs: 2500.4 });
+    await relayFetch('https://merchant.example/c', { timeoutMs: 120000 });
+    await relayFetch('https://merchant.example/d');
+    assert.deepEqual(calls.map((c) => c.payload.timeout_ms), [15000, 2501, RELAY_MAX_TIMEOUT_MS, RELAY_MAX_TIMEOUT_MS]);
+    assert.equal(RELAY_MAX_TIMEOUT_MS, 30000);
+    assert.equal(calls.some((c) => 'timeoutMs' in c.payload), false);
+  });
+
+  test('the hop waits the budget plus the margin, so the relay\'s own coded timeout arrives first', async () => {
+    let fired = 0;
+    const hopFetch = (_url, init) => new Promise((resolve, reject) => {
+      const t = setTimeout(() => resolve(new Response(JSON.stringify({ error_code: 'PIVOTA_RELAY_TIMEOUT' }), { status: 504 })), 30);
+      init.signal.addEventListener('abort', () => { fired += 1; clearTimeout(t); reject(new DOMException('aborted', 'AbortError')); });
+    });
+    const relayFetch = createRelayFetch({ relayUrl: RELAY, idTokenProvider: async () => 't', hopFetch, hopMarginMs: 200 });
+    await assert.rejects(relayFetch('https://merchant.example/x', { timeoutMs: 20 }), { code: 'PIVOTA_RELAY_TIMEOUT' });
+    assert.equal(fired, 0, 'the hop was not cut before the relay answered');
   });
 
   test('Response reconstruction: 200 with headers and body, 204 with no body, 302 with Location', async () => {

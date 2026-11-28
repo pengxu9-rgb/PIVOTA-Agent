@@ -10,9 +10,10 @@
 // Response, or rejects with the SAME coded errors (PIVOTA_SSRF_REFUSED, PIVOTA_SIZE_CAP, ...), so a caller cannot tell
 // which path carried its request.
 //
-// WHO USES IT. Only merchant-door callers: ucpBuyerAgentClient's default merchant fetch and the Shopify catalog
-// attribution client. A payment partner never goes through the relay (tests/door_relay_wiring.node.test.cjs pins the
-// list of files that may name this module).
+// WHO USES IT. Only merchant-door callers: ucpBuyerAgentClient's default merchant fetch, its createMerchantDoorFetch
+// (the storefront page, products.json, Cafe24, shop.json and signer-key reads), and the Shopify catalog attribution
+// client. A payment partner never goes through the relay (tests/door_relay_wiring.node.test.cjs pins the files that
+// may name it, and an inventory of every merchant-transport primitive in gateway runtime code).
 //
 // THE TWO HEADER SETS. The relay hop carries `Authorization: Bearer <Google ID token>` (Cloud Run IAM checks it).
 // The merchant's own headers — RFC 9421 Signature / Signature-Input / Content-Digest, UCP-Agent, and a merchant
@@ -26,8 +27,12 @@
 const MERCHANT_DOOR_RELAY_FLAG = 'MERCHANT_DOOR_RELAY';
 const MERCHANT_DOOR_RELAY_URL_ENV = 'MERCHANT_DOOR_RELAY_URL';
 const RELAY_FETCH_PATH = '/v1/fetch';
-// The relay's own total cap is 10 s; the hop waits a little longer so the relay's coded timeout arrives first.
-const DEFAULT_HOP_TIMEOUT_MS = 12_000;
+// THE BUDGET. A caller that knows its per-call budget passes `timeoutMs` in the fetch options (ucpBuyerAgentClient
+// and createMerchantDoorFetch do); it goes to the relay as `timeout_ms`, the relay caps the call there (never past
+// its own ceiling, 30 s by default), and the hop waits HOP_MARGIN_MS longer so the relay's coded timeout arrives
+// first. Without one, the budget is RELAY_MAX_TIMEOUT_MS and the caller's own AbortSignal is what bounds the call.
+const RELAY_MAX_TIMEOUT_MS = 30_000;
+const HOP_MARGIN_MS = 2_000;
 // The same bound as ucpBuyerAgentClient's MAX_MERCHANT_RESPONSE_BYTES (a test pins the two equal). Not imported:
 // ucpBuyerAgentClient requires this module, and a require cycle would hand one side a half-built export object.
 const MAX_MERCHANT_RESPONSE_BYTES = 2 * 1024 * 1024;
@@ -195,11 +200,18 @@ function toResponse(envelope, redirectMode) {
  * @param {{
  *   relayUrl: string,                 // the relay's https origin (also the ID token audience)
  *   idTokenProvider?: (audience: string) => Promise<string>,
- *   timeoutMs?: number,               // bound on the whole hop
+ *   timeoutMs?: number,               // budget when a call passes none (default: the relay ceiling, 30 s)
+ *   hopMarginMs?: number,             // how much longer the hop waits than the budget it sends
  *   hopFetch?: Function,              // the fetch that reaches the relay (default: global fetch, read per call)
  * }} config
  */
-function createRelayFetch({ relayUrl, idTokenProvider, timeoutMs = DEFAULT_HOP_TIMEOUT_MS, hopFetch } = {}) {
+function createRelayFetch({
+  relayUrl,
+  idTokenProvider,
+  timeoutMs = RELAY_MAX_TIMEOUT_MS,
+  hopMarginMs = HOP_MARGIN_MS,
+  hopFetch,
+} = {}) {
   const origin = validRelayOrigin(relayUrl);
   if (!origin) throw codedError('merchant door relay URL must be an https origin', 'PIVOTA_RELAY_UNCONFIGURED');
   const endpoint = `${origin}${RELAY_FETCH_PATH}`;
@@ -209,16 +221,22 @@ function createRelayFetch({ relayUrl, idTokenProvider, timeoutMs = DEFAULT_HOP_T
   return async function relayFetch(url, options = {}) {
     const signal = options.signal;
     if (signal && signal.aborted) throw abortError();
+    const asked = Number(options.timeoutMs);
+    const budgetMs = Math.ceil(Math.min(
+      Number.isFinite(asked) && asked > 0 ? asked : timeoutMs,
+      RELAY_MAX_TIMEOUT_MS,
+    ));
     const payload = JSON.stringify({
       url: String(url),
       method: String(options.method || 'GET').toUpperCase(),
       headers: headerPairs(options.headers),
       body_b64: bodyBase64(options.body),
+      timeout_ms: budgetMs,
     });
 
     const ac = new AbortController();
     let hopTimedOut = false;
-    const timer = setTimeout(() => { hopTimedOut = true; ac.abort(); }, timeoutMs);
+    const timer = setTimeout(() => { hopTimedOut = true; ac.abort(); }, budgetMs + hopMarginMs);
     timer.unref?.();
     const onAbort = () => ac.abort();
     if (signal) signal.addEventListener('abort', onAbort, { once: true });
@@ -339,6 +357,8 @@ module.exports = {
   MERCHANT_DOOR_RELAY_FLAG,
   MERCHANT_DOOR_RELAY_URL_ENV,
   RELAY_FETCH_PATH,
+  RELAY_MAX_TIMEOUT_MS,
+  HOP_MARGIN_MS,
   MAX_MERCHANT_RESPONSE_BYTES,
   METADATA_IDENTITY_URL,
   merchantDoorRelayMode,

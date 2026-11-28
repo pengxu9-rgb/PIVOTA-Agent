@@ -244,6 +244,44 @@ describe('door relay service', () => {
     }
   });
 
+  test('a forwarded value carrying the relay token is refused under any name, case or scheme, merged or not', async () => {
+    const lists = [
+      [['X-Forwarded-Token', 'relay-hop-id-token']],
+      [['authorization', 'bearer relay-hop-id-token']],
+      [['AUTHORIZATION', 'Token relay-hop-id-token']],
+      [['X-A', 'harmless'], ['x-a', 'prefix relay-hop-id-token suffix']],
+      [['Cookie', 'sid=relay-hop-id-token']],
+    ];
+    for (const headers of lists) {
+      const { status, json } = await relay.call({ url: 'https://merchant.example/x', method: 'GET', headers });
+      assert.equal(status, 400, JSON.stringify(headers));
+      assert.equal(json.error_code, 'PIVOTA_RELAY_BAD_REQUEST');
+    }
+    // A bare "Bearer" scheme on the inbound side is searched for as the raw token too.
+    const raw = await relay.call({ url: 'https://merchant.example/x', method: 'GET', headers: [['X-T', 'abc relay-hop-id-token']] },
+      { authorization: 'relay-hop-id-token' });
+    assert.equal(raw.status, 400);
+    // In the URL or the body it is refused as well.
+    const inQuery = await relay.call({ url: 'https://merchant.example/x?t=relay-hop-id-token', method: 'GET' });
+    assert.equal(inQuery.json.error_code, 'PIVOTA_RELAY_BAD_REQUEST');
+    const inBody = await relay.call({
+      url: 'https://merchant.example/x', method: 'POST', body_b64: Buffer.from('{"t":"relay-hop-id-token"}').toString('base64'),
+    });
+    assert.equal(inBody.json.error_code, 'PIVOTA_RELAY_BAD_REQUEST');
+    assert.equal(upstream.calls.length, 0, 'nothing carrying the token went out');
+  });
+
+  test('Content-Length is sent once when duplicates match the body; a mismatching one is dropped', async () => {
+    const body = Buffer.from('hello').toString('base64');
+    await relay.call({
+      url: 'https://merchant.example/x', method: 'POST', body_b64: body,
+      headers: [['Content-Length', '5'], ['content-length', '5'], ['X-Other', 'a'], ['x-other', 'b']],
+    });
+    assert.deepEqual(Object.entries(upstream.calls[0].headers), [['Content-Length', '5'], ['X-Other', 'a, b']]);
+    await relay.call({ url: 'https://merchant.example/x', method: 'POST', body_b64: body, headers: [['Content-Length', '7']] });
+    assert.deepEqual(Object.entries(upstream.calls[1].headers), []);
+  });
+
   test('an upstream network error comes back with its errno code, and a fixed message', async () => {
     const err = new Error('connect ECONNREFUSED to some address');
     err.code = 'ECONNREFUSED';
@@ -275,10 +313,67 @@ describe('door relay service: DNS and time caps', () => {
     } finally { await relay.close(); }
   });
 
+  const hangingTransport = (seen) => (_url, init) => new Promise((_resolve, reject) => {
+    seen.signal = init.signal;
+    init.signal.addEventListener('abort', () => { const e = new Error('aborted'); e.name = 'AbortError'; reject(e); });
+  });
+
+  test('the caller\'s timeout_ms is the call\'s cap', async () => {
+    const seen = {};
+    const relay = await startRelay({ maxTimeoutMs: 10_000, transport: hangingTransport(seen) });
+    try {
+      const started = Date.now();
+      const { status, json } = await relay.call({ url: 'https://slow.example/x', method: 'GET', timeout_ms: 40 });
+      assert.equal(status, 504);
+      assert.equal(json.error_code, 'PIVOTA_RELAY_TIMEOUT');
+      assert.ok(Date.now() - started < 5_000, 'stopped at the caller budget, not the ceiling');
+      assert.equal(seen.signal.aborted, true);
+    } finally { await relay.close(); }
+  });
+
+  test('a timeout_ms above the ceiling is held to the ceiling; a malformed one is refused', async () => {
+    const seen = {};
+    const relay = await startRelay({ maxTimeoutMs: 40, transport: hangingTransport(seen) });
+    try {
+      const started = Date.now();
+      const capped = await relay.call({ url: 'https://slow.example/x', method: 'GET', timeout_ms: 600_000 });
+      assert.equal(capped.json.error_code, 'PIVOTA_RELAY_TIMEOUT');
+      assert.ok(Date.now() - started < 5_000);
+      for (const bad of [0, -1, 1.5, '100']) {
+        const { status, json } = await relay.call({ url: 'https://slow.example/x', method: 'GET', timeout_ms: bad });
+        assert.equal(status, 400, String(bad));
+        assert.equal(json.error_code, 'PIVOTA_RELAY_BAD_REQUEST');
+      }
+    } finally { await relay.close(); }
+  });
+
+  test('the default ceiling is 30 s, above the buyer client\'s 15 s default budget', () => {
+    const { DEFAULT_MAX_TIMEOUT_MS } = require(SERVER_PATH);
+    assert.equal(DEFAULT_MAX_TIMEOUT_MS, 30_000);
+  });
+
+  test('a caller that hangs up aborts the upstream request', async () => {
+    const seen = {};
+    const relay = await startRelay({ transport: hangingTransport(seen) });
+    try {
+      const ac = new AbortController();
+      const pending = fetch(`${relay.base}/v1/fetch`, {
+        method: 'POST', body: JSON.stringify({ url: 'https://slow.example/x', method: 'GET' }), signal: ac.signal,
+      }).catch((e) => e);
+      for (let i = 0; i < 100 && !seen.signal; i += 1) await new Promise((r) => setTimeout(r, 5));
+      ac.abort();
+      await pending;
+      for (let i = 0; i < 100 && !seen.signal.aborted; i += 1) await new Promise((r) => setTimeout(r, 5));
+      assert.equal(seen.signal.aborted, true);
+      for (let i = 0; i < 100 && !relay.lines.length; i += 1) await new Promise((r) => setTimeout(r, 5));
+      assert.equal(relay.lines[0].error_code, 'PIVOTA_RELAY_CALLER_GONE');
+    } finally { await relay.close(); }
+  });
+
   test('the total time cap answers PIVOTA_RELAY_TIMEOUT and aborts the upstream', async () => {
     let seenSignal = null;
     const relay = await startRelay({
-      timeoutMs: 50,
+      maxTimeoutMs: 50,
       transport: (_url, init) => new Promise((_resolve, reject) => {
         seenSignal = init.signal;
         init.signal.addEventListener('abort', () => { const e = new Error('aborted'); e.name = 'AbortError'; reject(e); });
@@ -305,7 +400,7 @@ describe('door relay service: DNS and time caps', () => {
 });
 
 describe('door relay service reads no secret', () => {
-  const ALLOWED_ENV = ['PORT', 'DOOR_RELAY_TIMEOUT_MS', 'DOOR_RELAY_MAX_BODY_BYTES'];
+  const ALLOWED_ENV = ['PORT', 'DOOR_RELAY_MAX_TIMEOUT_MS', 'DOOR_RELAY_MAX_BODY_BYTES'];
 
   test('its source names only PORT and its own numeric caps', () => {
     const source = fs.readFileSync(SERVER_PATH, 'utf8');
@@ -339,7 +434,7 @@ describe('door relay service reads no secret', () => {
       for (const id of Object.keys(require.cache)) if (id.startsWith(repoSrc)) delete require.cache[id];
       const fresh = require(SERVER_PATH);
       const config = fresh.configFromEnv();
-      assert.equal(config.timeoutMs > 0, true);
+      assert.equal(config.maxTimeoutMs > 0, true);
       const lines = [];
       const server = http.createServer(fresh.createDoorRelayHandler({ lookup: PUBLIC_LOOKUP, log: (l) => lines.push(l) }));
       await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -364,16 +459,16 @@ describe('door relay service reads no secret', () => {
   });
 
   test('configFromEnv falls back to the defaults on non-numeric caps', () => {
-    const saved = { PORT: process.env.PORT, T: process.env.DOOR_RELAY_TIMEOUT_MS };
+    const saved = { PORT: process.env.PORT, T: process.env.DOOR_RELAY_MAX_TIMEOUT_MS };
     try {
       process.env.PORT = 'not-a-port';
-      process.env.DOOR_RELAY_TIMEOUT_MS = '-5';
+      process.env.DOOR_RELAY_MAX_TIMEOUT_MS = '-5';
       const config = configFromEnv();
       assert.equal(config.port, 8080);
-      assert.equal(config.timeoutMs, 10000);
+      assert.equal(config.maxTimeoutMs, 30000);
     } finally {
       if (saved.PORT === undefined) delete process.env.PORT; else process.env.PORT = saved.PORT;
-      if (saved.T === undefined) delete process.env.DOOR_RELAY_TIMEOUT_MS; else process.env.DOOR_RELAY_TIMEOUT_MS = saved.T;
+      if (saved.T === undefined) delete process.env.DOOR_RELAY_MAX_TIMEOUT_MS; else process.env.DOOR_RELAY_MAX_TIMEOUT_MS = saved.T;
     }
   });
 });
