@@ -11,7 +11,7 @@ const http = require('node:http');
 const express = require('express');
 const supertest = require('supertest');
 
-const { readAddressRequest, validateAddress, sanitizeFieldErrors, ADDRESS_FIELDS, US_STATES } = require('../src/agenpas/shippingAddress');
+const { readAddressRequest, validateAddress, sanitizeFieldErrors, ADDRESS_FIELDS } = require('../src/agenpas/shippingAddress');
 const { projectPurchaseView } = require('../src/agenpas/view');
 const { createAgenpasRouter } = require('../src/agenpas/router');
 const { createBackendPurchaseReader, INTERNAL_PURCHASES_PATH } = require('../src/agenpas/purchaseReader');
@@ -64,7 +64,7 @@ const ADDRESS = Object.freeze({
   addressLine1: '742 Needle Lane', addressLine2: 'Unit 9Z', city: 'Needleton', region: 'ca', postalCode: '94107',
   country: 'US',
 });
-const NORMALISED = Object.freeze({ ...ADDRESS, phone: '+14155550142', region: 'CA' });
+const NORMALISED = Object.freeze({ ...ADDRESS, phone: '+14155550142' }); // the state as written: no format of ours
 const NEEDLES = ['needle.person', 'Needlefirst', 'Needlelast', '555-0142', '5550142', '742 Needle', 'Unit 9Z', 'Needleton', '94107'];
 
 function token(over = {}) {
@@ -180,12 +180,17 @@ test('flag-off identity: every view without an address step projects byte-identi
 
 // ---- validation (server side) ----------------------------------------------------------------------------------
 
-test('validation: a complete US address is normalised (E.164 phone, upper-case state and country, ZIP)', () => {
+test('validation: a complete US address is normalised (E.164 phone, upper-case country); the state and ZIP as written', () => {
   const out = validateAddress(ADDRESS, { required: ADDRESS_FIELDS });
   assert.equal(out.ok, true);
   assert.deepEqual(out.value, NORMALISED);
   assert.equal(validateAddress({ ...ADDRESS, postalCode: '94107-1234' }).value.postalCode, '94107-1234');
-  assert.equal(validateAddress({ ...ADDRESS, postalCode: '941071234' }).value.postalCode, '94107-1234');
+  assert.equal(validateAddress({ ...ADDRESS, postalCode: '941071234' }).value.postalCode, '941071234');
+  for (const [field, given] of [['region', 'Texas'], ['region', 'PR'], ['region', 'AE'], ['postalCode', '941'], ['postalCode', 'K1A 0B1']]) {
+    const v = validateAddress({ ...ADDRESS, [field]: given });
+    assert.equal(v.ok, true, `${field} ${given}`);
+    assert.equal(v.value[field], given);
+  }
   assert.equal(validateAddress({ ...ADDRESS, phone: '+1 415 555 0142' }).value.phone, '+14155550142');
   assert.equal(validateAddress({ ...ADDRESS, phone: '1-415-555-0142' }).value.phone, '+14155550142');
 });
@@ -196,10 +201,8 @@ test('validation: every rule answers a CODE per field, never the value', () => {
     [{ email: `${'a'.repeat(201)}@x.co` }, 'email', 'too_long'],
     [{ phone: '555-01' }, 'phone', 'invalid_phone'],
     [{ phone: '415 555 0142 ext 2' }, 'phone', 'invalid_phone'],
-    [{ postalCode: '9410' }, 'postalCode', 'invalid_postal_code'],
-    [{ postalCode: 'ABCDE' }, 'postalCode', 'invalid_postal_code'],
-    [{ region: 'ZZ' }, 'region', 'invalid_region'],
-    [{ region: 'California' }, 'region', 'invalid_region'],
+    [{ region: 'x'.repeat(201) }, 'region', 'too_long'],
+    [{ postalCode: 'Needle\u0007' }, 'postalCode', 'invalid_characters'],
     [{ country: 'CA' }, 'country', 'unsupported_country'],
     [{ city: 'Needle\u0007ton' }, 'city', 'invalid_characters'],
     [{ addressLine1: 'x'.repeat(201) }, 'addressLine1', 'too_long'],
@@ -217,18 +220,16 @@ test('validation: every rule answers a CODE per field, never the value', () => {
   assert.deepEqual(partial.field_errors, { phone: 'required' });
   assert.equal(validateAddress({}, { required: [] }).field_errors._body, 'empty');
   assert.equal(validateAddress('x').ok, false);
-  assert.equal(US_STATES.length, 51);
 });
 
-test('validation: the state and ZIP are required only when the request lists them; one given is still checked', () => {
+test('validation: the state and ZIP are required only when the request lists them; one given is the buyer\'s', () => {
   const { region, postalCode, ...bare } = ADDRESS; // eslint-disable-line no-unused-vars
   const fallback = readAddressRequest('needs_shipping_address', null, { now: NOW }).fields_missing; // names no fields
   const out = validateAddress(bare, { required: fallback });
   assert.equal(out.ok, true);
   assert.equal('region' in out.value || 'postalCode' in out.value, false);
-  assert.deepEqual(validateAddress({ ...bare, region: 'ZZ' }, { required: fallback }).field_errors, { region: 'invalid_region' });
-  assert.deepEqual(validateAddress({ ...bare, postalCode: '941' }, { required: fallback }).field_errors,
-    { postalCode: 'invalid_postal_code' });
+  assert.equal(validateAddress({ ...bare, region: 'ZZ' }, { required: fallback }).value.region, 'ZZ');
+  assert.equal(validateAddress({ ...bare, postalCode: '941' }, { required: fallback }).value.postalCode, '941');
   // Listed by the backend (a backend that still requires them): required, as the backend will answer.
   assert.deepEqual(validateAddress(bare, { required: ADDRESS_FIELDS }).field_errors,
     { region: 'required', postalCode: 'required' });

@@ -413,8 +413,8 @@ test('address screen: only the missing fields, with autocomplete / inputmode, pr
   assert.equal(byName(h, 'phone').getAttribute('inputmode'), 'tel');
   assert.equal(byName(h, 'postalCode').getAttribute('autocomplete'), 'shipping postal-code');
   assert.equal(byName(h, 'postalCode').getAttribute('inputmode'), 'numeric');
-  assert.equal(byName(h, 'region').tagName, 'SELECT');
-  assert.equal(byName(h, 'region').children.length, 52); // "Choose…" + 50 states + DC
+  assert.equal(byName(h, 'region').tagName, 'INPUT'); // free text: no list of ours (the store's checkout judges it)
+  assert.equal(byName(h, 'region').getAttribute('autocomplete'), 'shipping address-level1');
   assert.equal(byName(h, 'country').value, 'US');
   for (const n of h.app.all((x) => x.tagName === 'INPUT')) assert.equal(/cc-/.test(n.getAttribute('autocomplete') || ''), false);
 });
@@ -505,17 +505,18 @@ test('address screen: the state and ZIP are not added to a form that does not as
   assert.deepEqual(h.app.all((n) => n.tagName === 'INPUT' || n.tagName === 'SELECT').map((n) => n.name), ['email', 'phone']);
 });
 
-test('address form: a ZIP given is still checked though it is optional', async () => {
-  const h = harness({ answers: [{ status: 200, body: addressView(['addressLine1']) }] });
+test('address form: a state and ZIP given are sent as the buyer wrote them', async () => {
+  const next = view({ state: 'needs_payment_method', screen: 'add_card' });
+  const h = harness({ answers: [{ status: 200, body: addressView(['addressLine1']) }, { status: 200, body: next }] });
   h.start();
   await settle();
   type(byName(h, 'addressLine1'), '1 Example Way');
+  type(byName(h, 'region'), 'Texas');
   type(byName(h, 'postalCode'), '941');
-  const ev = submit(h);
+  submit(h);
   await settle();
-  assert.equal(ev.prevented, true);
-  assert.equal(h.fetches.length, 1, 'only the first read');
-  assert.match(h.text(), /Enter a 5-digit ZIP code\./);
+  assert.equal(h.fetches.length, 2);
+  assert.deepEqual(JSON.parse(h.fetches[1].init.body), { addressLine1: '1 Example Way', region: 'Texas', postalCode: '941' });
 });
 
 test('address form: client checks stop an incomplete submit with inline messages (nothing sent)', async () => {
@@ -523,13 +524,12 @@ test('address form: client checks stop an incomplete submit with inline messages
   h.start();
   await settle();
   type(byName(h, 'email'), 'not-an-email');
-  type(byName(h, 'postalCode'), '941');
   const ev = submit(h);
   await settle();
   assert.equal(ev.prevented, true);
   assert.equal(h.fetches.length, 1, 'only the first read');
   assert.match(h.text(), /Enter a valid email address\./);
-  assert.match(h.text(), /Enter a 5-digit ZIP code\./);
+  assert.match(h.text(), /This is required\./); // the listed ZIP, left empty
   assert.equal(byName(h, 'email').getAttribute('aria-invalid'), 'true');
 });
 
@@ -1261,10 +1261,10 @@ test('panel: a purchase that stopped keeps its amount, dimmed, and claims nothin
 });
 
 test('address: each field is one box named for its field, and a refused field is marked on its box', async () => {
-  const h = harness({ answers: [{ status: 200, body: addressView(['firstName', 'lastName', 'postalCode']) }] });
+  const h = harness({ answers: [{ status: 200, body: addressView(['firstName', 'lastName', 'phone']) }] });
   h.start();
   await settle();
-  assert.deepEqual(byClass(h, 'field').map((n) => n.className), ['field field-firstName', 'field field-lastName', 'field field-postalCode']);
+  assert.deepEqual(byClass(h, 'field').map((n) => n.className), ['field field-firstName', 'field field-lastName', 'field field-phone']);
   // The panel above the long form is the small one; every other screen draws the full panel. Small hides nothing:
   // the item price keeps its label and its "shipping and tax are added" line, in the page and in the stylesheet.
   assert.deepEqual(byClass(h, 'summary').map((n) => n.className), ['card summary summary-compact']);
@@ -1282,8 +1282,8 @@ test('address: each field is one box named for its field, and a refused field is
   const form = findAll(h, (n) => n.tagName === 'FORM')[0];
   for (const fn of form.listeners.submit || []) fn({ preventDefault() {} });
   await settle();
-  assert.deepEqual(byClass(h, 'field-bad').map((n) => n.className), ['field field-postalCode field-bad']);
-  assert.match(h.text(), /Enter a 5-digit ZIP code\./);
+  assert.deepEqual(byClass(h, 'field-bad').map((n) => n.className), ['field field-phone field-bad']);
+  assert.match(h.text(), /Enter a valid phone number\./);
 });
 
 test('address: a closed step and the "Checking the terms…" card carry no line about the total', async () => {

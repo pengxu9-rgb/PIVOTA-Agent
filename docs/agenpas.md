@@ -326,8 +326,9 @@ form.
 for neither a state nor a ZIP; the store's own checkout asks if it needs one. So a form that asks for the address's
 first line also offers the state and the ZIP when the backend does NOT list them, labelled "(optional)" and not
 `aria-required`. A field the backend lists stays required, whatever it is: the form never calls optional what the
-backend will refuse without. US only for the pilot (the rail is USD only): `country` is a one-option select, `region`
-a 2-letter state select (50 states and DC), the ZIP 5 or 9 digits, each checked when given. The inputs carry the shipping autocomplete tokens (`shipping given-name`, `shipping family-name`,
+backend will refuse without. US only for the pilot (the rail is USD only): `country` is a one-option select. The
+state and the ZIP are free text, sent as the buyer wrote them: no format of ours (which fields a store needs, and in
+what format, is its platform's to say in its checkout; Visa validates what it is sent). The inputs carry the shipping autocomplete tokens (`shipping given-name`, `shipping family-name`,
 `shipping address-line1/2`, `shipping address-level2/1`, `shipping postal-code`, `shipping country`, `shipping tel`,
 `email`) and `inputmode` for the phone and the ZIP. There is still NO card field anywhere.
 
@@ -338,8 +339,9 @@ a 2-letter state select (50 states and DC), the ZIP 5 or 9 digits, each checked 
 - needs the link token in `X-Agenpas-Link` (never a cookie, so no cross-site form can send it);
 - limits 5 writes a minute per link, on top of the per-IP bucket;
 - validates: the request's required fields, at most 200 characters, no control characters, an email shape, an
-  E.164-ish phone (normalised, `+1` for a 10-digit US number), a US ZIP and a US state code when given (required
-  only when the request lists them; a request that names no fields asks for everything but these two);
+  E.164-ish phone (normalised, `+1` for a 10-digit US number); the state and the ZIP only by the length and
+  control-character rules (required only when the request lists them; a request that names no fields asks for
+  everything but these two);
 - forwards the normalised address server-to-server to the backend's
   `POST /agent/internal/commerce/purchases/{id}/shipping-address` (same `X-Internal-Key` / `X-Agenpas-Agent-Id` as
   the read), and answers the view the backend returns, so the page moves on to adding a card or approving.
@@ -383,7 +385,7 @@ comes at once, exactly as before. Agent surfaces: a gated `shipping_address` `ne
 gated steps (`agenpas_url`, also as `next_action.action_url` while consent is on).
 
 **PII.** The address goes to the backend and nowhere else. No log line, error message or refusal carries any of it:
-field errors are codes (`required`, `invalid_postal_code`, ...), refusal logs carry a reason only, and the page keeps
+field errors are codes (`required`, `invalid_phone`, ...), refusal logs carry a reason only, and the page keeps
 what the buyer typed in memory only (never in storage).
 
 ## Terms and privacy consent
