@@ -235,6 +235,7 @@ describe('payment partners never use the relay', () => {
     'tests/door_relay_server.node.test.cjs',
     'tests/door_relay_fetch.node.test.cjs',
     'tests/door_relay_wiring.node.test.cjs',
+    'tests/door_relay_signed_roundtrip.node.test.cjs',
   ]);
   const PAYMENT_RE = /reap|evonet|visa|agenpa[sz]|a2a|card|payment|psp|stripe|adyen|checkout_pay/i;
   // Skipped anywhere: dependencies and git. Skipped at the top only: folders that hold no gateway code.
