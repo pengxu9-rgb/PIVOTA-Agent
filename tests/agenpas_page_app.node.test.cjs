@@ -412,7 +412,7 @@ test('address screen: only the missing fields, with autocomplete / inputmode, pr
   assert.equal(byName(h, 'phone').getAttribute('autocomplete'), 'shipping tel');
   assert.equal(byName(h, 'phone').getAttribute('inputmode'), 'tel');
   assert.equal(byName(h, 'postalCode').getAttribute('autocomplete'), 'shipping postal-code');
-  assert.equal(byName(h, 'postalCode').getAttribute('inputmode'), 'numeric');
+  assert.equal(byName(h, 'postalCode').getAttribute('inputmode') == null, true); // no numeric pad: postcodes can carry letters
   assert.equal(byName(h, 'region').tagName, 'INPUT'); // free text: no list of ours (the store's checkout judges it)
   assert.equal(byName(h, 'region').getAttribute('autocomplete'), 'shipping address-level1');
   assert.equal(byName(h, 'country').value, 'US');
@@ -519,6 +519,19 @@ test('address form: a state and ZIP given are sent as the buyer wrote them', asy
   assert.deepEqual(JSON.parse(h.fetches[1].init.body), { addressLine1: '1 Example Way', region: 'Texas', postalCode: '941' });
 });
 
+test('address form: a state or ZIP over the backend\'s cap is stopped on the page (nothing sent)', async () => {
+  const h = harness({ answers: [{ status: 200, body: addressView(['addressLine1']) }] });
+  h.start();
+  await settle();
+  type(byName(h, 'addressLine1'), '1 Example Way');
+  type(byName(h, 'postalCode'), '1'.repeat(33));
+  const ev = submit(h);
+  await settle();
+  assert.equal(ev.prevented, true);
+  assert.equal(h.fetches.length, 1, 'only the first read');
+  assert.match(h.text(), /This is too long\./);
+});
+
 test('address form: client checks stop an incomplete submit with inline messages (nothing sent)', async () => {
   const h = harness({ answers: [{ status: 200, body: addressView(['email', 'postalCode']) }] });
   h.start();
@@ -557,14 +570,14 @@ test('address form: submits JSON to its own route with the link header, then sho
 test('address form: a 422 shows the server\'s field errors inline; a 409 says "We already have your address"', async () => {
   const h = harness({ answers: [
     { status: 200, body: addressView(['postalCode']) },
-    { status: 422, body: { error: 'invalid_address', field_errors: { postalCode: 'invalid_postal_code' } } },
+    { status: 422, body: { error: 'invalid_address', field_errors: { postalCode: 'too_long' } } },
   ] });
   h.start();
   await settle();
   type(byName(h, 'postalCode'), '94107');
   submit(h);
   await settle();
-  assert.match(h.text(), /Enter a 5-digit ZIP code\./);
+  assert.match(h.text(), /This is too long\./);
   assert.equal(byName(h, 'postalCode').value, '94107', 'what the buyer typed is kept');
   const h2 = harness({ answers: [{ status: 200, body: addressView(['postalCode']) }, { status: 409, body: { error: 'address_already_set' } }] });
   h2.start();

@@ -48,6 +48,8 @@ const PRE_PLACING = new Set(['routing', 'needs_payment_method', 'locking', 'awai
 const COUNTRIES = Object.freeze(['US']);
 
 const MAX_FIELD_CHARS = 200;
+// The backend's own caps for these two (a2a_shipping_address.MAX_LENGTH), so the gateway refuses what the backend would.
+const FIELD_MAX_CHARS = Object.freeze({ region: 100, postalCode: 32 });
 // eslint-disable-next-line no-control-regex
 const CONTROL_RE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/;
 const EMAIL_RE = /^[^\s@]{1,64}@[^\s@.]+(?:\.[^\s@.]+)+$/;
@@ -126,7 +128,7 @@ function validateAddress(body, { required = [] } = {}) {
     }
     if (typeof raw !== 'string') { errors[field] = 'invalid'; continue; }
     const v = raw.trim();
-    if (v.length > MAX_FIELD_CHARS) { errors[field] = 'too_long'; continue; }
+    if (v.length > (FIELD_MAX_CHARS[field] || MAX_FIELD_CHARS)) { errors[field] = 'too_long'; continue; }
     if (CONTROL_RE.test(v)) { errors[field] = 'invalid_characters'; continue; }
     switch (field) {
       case 'email':

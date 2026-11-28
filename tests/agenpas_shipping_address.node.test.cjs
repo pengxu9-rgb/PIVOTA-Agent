@@ -201,7 +201,8 @@ test('validation: every rule answers a CODE per field, never the value', () => {
     [{ email: `${'a'.repeat(201)}@x.co` }, 'email', 'too_long'],
     [{ phone: '555-01' }, 'phone', 'invalid_phone'],
     [{ phone: '415 555 0142 ext 2' }, 'phone', 'invalid_phone'],
-    [{ region: 'x'.repeat(201) }, 'region', 'too_long'],
+    [{ region: 'x'.repeat(101) }, 'region', 'too_long'], // the backend's caps: 100 for the state, 32 for the ZIP
+    [{ postalCode: '1'.repeat(33) }, 'postalCode', 'too_long'],
     [{ postalCode: 'Needle\u0007' }, 'postalCode', 'invalid_characters'],
     [{ country: 'CA' }, 'country', 'unsupported_country'],
     [{ city: 'Needle\u0007ton' }, 'city', 'invalid_characters'],

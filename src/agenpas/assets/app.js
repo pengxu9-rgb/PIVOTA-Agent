@@ -988,16 +988,16 @@
     addressLine2: { label: 'Apartment, suite, etc. (optional)', autocomplete: 'shipping address-line2', optional: true },
     city: { label: 'City', autocomplete: 'shipping address-level2' },
     region: { label: 'State', autocomplete: 'shipping address-level1' },
-    postalCode: { label: 'ZIP code', autocomplete: 'shipping postal-code', inputmode: 'numeric' },
+    postalCode: { label: 'ZIP code', autocomplete: 'shipping postal-code' },
     country: { label: 'Country', autocomplete: 'shipping country', options: [['US', 'United States']] },
   };
+  // The backend's caps for these two (a2a_shipping_address.MAX_LENGTH); every other field: 200.
+  var FIELD_MAX_CHARS = { region: 100, postalCode: 32 };
   var ADDRESS_ORDER = ['email', 'firstName', 'lastName', 'phone', 'addressLine1', 'addressLine2', 'city', 'region', 'postalCode', 'country'];
   var ERROR_TEXT = {
     required: 'This is required.',
     invalid_email: 'Enter a valid email address.',
     invalid_phone: 'Enter a valid phone number.',
-    invalid_postal_code: 'Enter a 5-digit ZIP code.',
-    invalid_region: 'Choose a state.',
     unsupported_country: 'We can only ship to the United States for now.',
     too_long: 'This is too long.',
     invalid_characters: 'Remove the special characters.',
@@ -1038,7 +1038,7 @@
         if (!fieldOptional(f, added || [])) errors[f] = 'required';
         return;
       }
-      if (v.length > 200) errors[f] = 'too_long';
+      if (v.length > (FIELD_MAX_CHARS[f] || 200)) errors[f] = 'too_long';
       else if (f === 'email' && !/^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(v)) errors[f] = 'invalid_email';
       else if (f === 'phone' && (!/^[0-9+\s\-().]+$/.test(v) || v.replace(/[^0-9]/g, '').length < 10)) errors[f] = 'invalid_phone';
       else if (f === 'country' && v.toUpperCase() !== 'US') errors[f] = 'unsupported_country';

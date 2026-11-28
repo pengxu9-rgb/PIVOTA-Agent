@@ -330,7 +330,7 @@ backend will refuse without. US only for the pilot (the rail is USD only): `coun
 state and the ZIP are free text, sent as the buyer wrote them: no format of ours (which fields a store needs, and in
 what format, is its platform's to say in its checkout; Visa validates what it is sent). The inputs carry the shipping autocomplete tokens (`shipping given-name`, `shipping family-name`,
 `shipping address-line1/2`, `shipping address-level2/1`, `shipping postal-code`, `shipping country`, `shipping tel`,
-`email`) and `inputmode` for the phone and the ZIP. There is still NO card field anywhere.
+`email`) and `inputmode` for the phone (none for the ZIP: a postcode can carry letters). There is still NO card field anywhere.
 
 **The write.** The page posts the fields to `POST /agenpas/api/p/:id/shipping-address`. The gateway:
 
@@ -339,8 +339,8 @@ what format, is its platform's to say in its checkout; Visa validates what it is
 - needs the link token in `X-Agenpas-Link` (never a cookie, so no cross-site form can send it);
 - limits 5 writes a minute per link, on top of the per-IP bucket;
 - validates: the request's required fields, at most 200 characters, no control characters, an email shape, an
-  E.164-ish phone (normalised, `+1` for a 10-digit US number); the state and the ZIP only by the length and
-  control-character rules (required only when the request lists them; a request that names no fields asks for
+  E.164-ish phone (normalised, `+1` for a 10-digit US number); the state and the ZIP only by the length (the
+  backend's caps: 100 and 32 characters) and control-character rules (required only when the request lists them; a request that names no fields asks for
   everything but these two);
 - forwards the normalised address server-to-server to the backend's
   `POST /agent/internal/commerce/purchases/{id}/shipping-address` (same `X-Internal-Key` / `X-Agenpas-Agent-Id` as
